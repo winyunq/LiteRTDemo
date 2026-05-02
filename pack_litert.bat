@@ -69,11 +69,11 @@ echo /Source/...
 echo /Config/...
 ) > "%OUTPUT_DIR%\Config\FilterPlugin.ini"
 
-:: 5. Copy functional files (Surgical Copy)
+:: 4. Copy functional files (Surgical Copy)
 echo [INFO] Copying functional files (.h, .cpp, .cs, .dll, .lib)...
 robocopy "%PLUGIN_SRC%\Source" "%OUTPUT_DIR%\Source" *.h *.cpp *.cs *.dll *.lib /S /R:3 /W:5 >nul
 
-:: 6. COMPRESSION - Using tar.exe (Included in Win10/11)
+:: 5. COMPRESSION - Using tar.exe (Included in Win10/11)
 :: Tar is significantly more robust against temporary file locks than PowerShell.
 echo [INFO] Compressing to %ZIP_NAME%...
 pushd "%PACKAGE_ROOT%"
