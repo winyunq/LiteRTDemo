@@ -7,6 +7,7 @@ public class UmgMcp : ModuleRules
 {
 	public UmgMcp(ReadOnlyTargetRules Target) : base(Target)
 	{
+		bUseUnity = false;
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
 		PublicDefinitions.Add("UMGMCP_EXPORTS=1");

@@ -74,12 +74,6 @@ void FUmgMcpLiteRtLmAiProvider::EnsureModelLoadedAsync(TFunction<void(bool)> OnC
 
     UE_LOG(LogUmgMcp, Log, TEXT("[LiteRtLmProvider] Loading model from: %s"), *AbsPath);
 
-    // [New] Align with Llama: If a model is loaded but path differs, unload it first.
-    if (LiteRtLm->IsModelLoaded() && LiteRtLm->GetCurrentConfig().ModelPath != AbsPath)
-    {
-        UnloadModel();
-    }
-
     if (LiteRtLm->IsModelLoaded())
     {
         if (OnComplete) OnComplete(true);
