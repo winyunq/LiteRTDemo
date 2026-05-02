@@ -1,0 +1,39 @@
+# Unreal Engine .gitignore
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+Build/
+Document/
+Binaries/Packaged/
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.user
+*.userprefs
+*.docstates
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.VC.db-shm
+*.VC.db-wal
+*.layout
+*.suo.old
+
+# Ignore large models (exceeds GitHub 2GB limit)
+Content/Models/gemma-4-E2B-it.litertlm
+*.litertlm
+
+# Project specific
+!Source/
+!Content/
+!Config/
+!Plugins/
+!LiteRTDemo.uproject
+!README.md
+!LICENSE
+!WINYUNQ_DOCUMENTATION_PLAN.md
+!WINYUNQ_PROJECT_STATUS.md
