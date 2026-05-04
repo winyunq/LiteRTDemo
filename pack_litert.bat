@@ -20,14 +20,35 @@ set "ZIP_NAME=%PLUGIN_NAME%_v1.0_%TIMESTAMP%.zip"
 echo [INFO] Surgical Packaging for %PLUGIN_NAME%...
 echo [INFO] Staging Area: %OUTPUT_DIR%
 
-:: 2. Clean and recreate staging directory
+:: ============================================================
+:: 2. Manual Copyright Header Check
+:: ============================================================
+echo [INFO] Performing Manual Copyright Header Check...
+set "MISSING_COPYRIGHT=0"
+for /r "%PLUGIN_SRC%\Source" %%F in (*.h *.cpp *.cs) do (
+    findstr /c:"Copyright" "%%F" >nul
+    if errorlevel 1 (
+        echo [WARN] Missing copyright header: %%F
+        set "MISSING_COPYRIGHT=1"
+    )
+)
+
+if "%MISSING_COPYRIGHT%"=="1" (
+    echo [ERROR] Copyright check failed. Some files are missing headers.
+    echo [ERROR] Aborting package process.
+    pause
+    exit /b 1
+)
+echo [OK] All source files contain copyright headers.
+
+:: 3. Clean and recreate staging directory
 if exist "%PACKAGE_ROOT%" (
     echo [INFO] Cleaning staging area...
     rd /s /q "%PACKAGE_ROOT%"
 )
 mkdir "%OUTPUT_DIR%"
 
-:: 3. Generate a clean, Fab-compliant .uplugin file (Target 5.7.0)
+:: 4. Generate a clean, Fab-compliant .uplugin file (Target 5.7.0)
 echo [INFO] Generating Fab-compliant .uplugin (Target: 5.7.0)...
 (
 echo {
@@ -60,27 +81,34 @@ echo 	]
 echo }
 ) > "%OUTPUT_DIR%\%PLUGIN_NAME%.uplugin"
 
-:: 4. Ensure FilterPlugin.ini
+:: 5. Ensure FilterPlugin.ini
 echo [INFO] Ensuring FilterPlugin.ini...
 if not exist "%OUTPUT_DIR%\Config" mkdir "%OUTPUT_DIR%\Config"
 (
 echo [FilterPlugin]
 echo /Source/...
+echo /Resources/...
 echo /Config/...
 ) > "%OUTPUT_DIR%\Config\FilterPlugin.ini"
 
-:: 4. Copy functional files (Surgical Copy)
+:: 6. Copy functional files (Surgical Copy)
 echo [INFO] Copying functional files (.h, .cpp, .cs, .dll, .lib)...
 robocopy "%PLUGIN_SRC%\Source" "%OUTPUT_DIR%\Source" *.h *.cpp *.cs *.dll *.lib /S /R:3 /W:5 >nul
 
-:: 5. COMPRESSION - Using tar.exe (Included in Win10/11)
+:: Copy Resources (Icon, etc.)
+if exist "%PLUGIN_SRC%\Resources" (
+    echo [INFO] Copying resources...
+    robocopy "%PLUGIN_SRC%\Resources" "%OUTPUT_DIR%\Resources" /S /R:3 /W:5 >nul
+)
+
+:: 7. COMPRESSION - Using tar.exe (Included in Win10/11)
 :: Tar is significantly more robust against temporary file locks than PowerShell.
 echo [INFO] Compressing to %ZIP_NAME%...
 pushd "%PACKAGE_ROOT%"
 tar -a -c -f "%ZIP_NAME%" "%PLUGIN_NAME%"
 popd
 
-:: 7. OUTPUT FAB TECHNICAL DETAILS TO CONSOLE
+:: 8. OUTPUT FAB TECHNICAL DETAILS TO CONSOLE
 echo.
 echo ============================================================
 echo        FAB TECHNICAL DETAILS (COPY FROM BELOW)

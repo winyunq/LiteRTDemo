@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-:: Path to Unreal Engine 5.6
+:: Path to Unreal Engine 5.7
 set "UE_ROOT=D:\UE_5.6"
 set "UAT_PATH=%UE_ROOT%\Engine\Build\BatchFiles\RunUAT.bat"
 
