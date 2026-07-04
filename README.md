@@ -7,6 +7,9 @@ A specialized AI-assisted UMG workflow demo for Unreal Engine 5, featuring **Lit
 - **UMG MCP Integration**: Seamless AI-assisted UI design and interaction.
 - **Winyunq Strategy**: High-efficiency development workflow.
 
+## Project Demo Docs
+- **AI Werewolf Demo Plan**: [Markdown](DemoDocs/AIWerewolfDemo/README_zh.md) / [Static Web Page](DemoDocs/AIWerewolfDemo/index.html)
+
 ## Project Structure
 - `Source/UmgMcp`: Core logic for the UMG MCP system.
 - `Plugins/LiteRT-LM-Unreal`: Local LLM inference backend (Submodule).
