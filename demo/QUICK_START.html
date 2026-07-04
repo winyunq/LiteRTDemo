@@ -1,0 +1,677 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRT-LM Unreal Quick Start</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f5f7fb;
+            --surface: #ffffff;
+            --surface-soft: #eef3f8;
+            --text: #18202d;
+            --muted: #657184;
+            --line: #d8e0ea;
+            --blue: #235fb8;
+            --blue-soft: #e8f1ff;
+            --green: #16745a;
+            --green-soft: #e6f6f0;
+            --amber: #986412;
+            --amber-soft: #fff4d8;
+            --code-bg: #111827;
+            --code-text: #e6edf7;
+            --shadow: 0 16px 40px rgba(28, 39, 58, 0.08);
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.65;
+        }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code, pre { font-family: Consolas, "Cascadia Mono", "SFMono-Regular", monospace; }
+        code {
+            padding: 0.12rem 0.35rem;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: var(--surface-soft);
+            color: #143c77;
+            font-size: 0.92em;
+        }
+        pre {
+            margin: 0;
+            padding: 1rem;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #202b3b;
+            background: var(--code-bg);
+            color: var(--code-text);
+            font-size: 0.92rem;
+        }
+        pre code {
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font-size: inherit;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.85rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+        th {
+            text-align: left;
+            color: #2e3a4a;
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        td { color: var(--muted); }
+        .wrap {
+            width: min(1160px, calc(100% - 32px));
+            margin: 0 auto;
+        }
+        .topbar {
+            border-bottom: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.92);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(12px);
+        }
+        .topbar-inner {
+            min-height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+        .mark {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--blue);
+            box-shadow: inset 0 -10px 0 rgba(22, 116, 90, 0.45);
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+        .hero {
+            padding: 4.5rem 0 3.5rem;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface);
+        }
+        .hero-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 360px;
+            gap: 2rem;
+            align-items: end;
+        }
+        .eyebrow {
+            margin: 0 0 0.8rem;
+            color: var(--blue);
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+        h1 {
+            max-width: 820px;
+            margin: 0;
+            color: #111827;
+            font-size: clamp(2.4rem, 5vw, 4.8rem);
+            line-height: 1.05;
+            letter-spacing: 0;
+        }
+        .lead {
+            max-width: 760px;
+            margin: 1.2rem 0 0;
+            color: #415064;
+            font-size: 1.12rem;
+        }
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            margin-top: 1.4rem;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 32px;
+            padding: 0.3rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+        .badge.blue { border-color: #b9d1f2; background: var(--blue-soft); color: var(--blue); }
+        .badge.green { border-color: #b7e1d4; background: var(--green-soft); color: var(--green); }
+        .badge.amber { border-color: #efd99e; background: var(--amber-soft); color: var(--amber); }
+        .quick-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.86);
+            box-shadow: var(--shadow);
+            padding: 1.1rem;
+        }
+        .quick-card h2 {
+            margin: 0 0 0.75rem;
+            font-size: 1rem;
+        }
+        .quick-card ol {
+            margin: 0;
+            padding-left: 1.15rem;
+            color: var(--muted);
+            font-size: 0.94rem;
+        }
+        .quick-card li + li { margin-top: 0.45rem; }
+        .layout {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 2rem;
+            padding: 2.5rem 0 4rem;
+        }
+        .toc {
+            align-self: start;
+            position: sticky;
+            top: 82px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            padding: 1rem;
+        }
+        .toc-title {
+            margin: 0 0 0.65rem;
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: var(--muted);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .toc a {
+            display: block;
+            padding: 0.36rem 0;
+            color: #425066;
+            font-size: 0.92rem;
+        }
+        .content { display: grid; gap: 2rem; }
+        .section {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+            padding: 1.4rem;
+        }
+        .section-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.85rem;
+            margin-bottom: 1rem;
+        }
+        .section-number {
+            flex: 0 0 auto;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: var(--blue-soft);
+            color: var(--blue);
+            font-weight: 800;
+        }
+        .section h2 {
+            margin: 0;
+            font-size: 1.45rem;
+            line-height: 1.25;
+        }
+        .section-desc {
+            margin: 0.25rem 0 0;
+            color: var(--muted);
+        }
+        .grid-3,
+        .grid-2,
+        .code-grid {
+            display: grid;
+            gap: 1rem;
+        }
+        .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .grid-2,
+        .code-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .note,
+        .mini-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fbfcfe;
+            padding: 1rem;
+        }
+        .note strong,
+        .mini-card strong {
+            display: block;
+            margin-bottom: 0.3rem;
+            color: var(--text);
+        }
+        .note p,
+        .mini-card p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.94rem;
+        }
+        .step-list { display: grid; gap: 1rem; }
+        .step {
+            display: grid;
+            grid-template-columns: 52px minmax(0, 1fr);
+            gap: 1rem;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fbfcfe;
+            padding: 1rem;
+        }
+        .step-index {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: var(--green-soft);
+            color: var(--green);
+            font-weight: 800;
+        }
+        .step h3 {
+            margin: 0 0 0.35rem;
+            font-size: 1.05rem;
+        }
+        .step p {
+            margin: 0 0 0.8rem;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+        .shot {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: #eef2f7;
+        }
+        .table-wrap { overflow-x: auto; }
+        .node-table { margin-top: 1rem; }
+        .footer {
+            padding: 1.8rem 0;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            background: var(--surface);
+            font-size: 0.86rem;
+        }
+        .footer-inner {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        @media (max-width: 920px) {
+            .hero-grid,
+            .layout,
+            .grid-3,
+            .grid-2,
+            .code-grid {
+                grid-template-columns: 1fr;
+            }
+            .toc {
+                position: static;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.25rem 1rem;
+            }
+            .toc-title { grid-column: 1 / -1; }
+        }
+        @media (max-width: 620px) {
+            .wrap { width: min(100% - 24px, 1160px); }
+            .topbar-inner {
+                align-items: flex-start;
+                flex-direction: column;
+                padding: 0.8rem 0;
+            }
+            .hero { padding: 2.8rem 0 2rem; }
+            .section { padding: 1rem; }
+            .step { grid-template-columns: 1fr; gap: 0.7rem; }
+            .toc { grid-template-columns: 1fr; }
+        }
+    </style>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page">
+    <header class="topbar">
+        <div class="wrap topbar-inner">
+            <a class="brand" href="index.html" aria-label="Back to documentation hub">
+                <span class="mark" aria-hidden="true"></span>
+                <span>LiteRT-LM Unreal</span>
+            </a>
+            <nav class="nav" aria-label="Documentation navigation">
+                <a href="index.html">Docs Home</a>
+                <a href="../plugin/api_reference.html">API Reference</a>
+                <a href="../plugin/SHIPPING.html">Shipping</a>
+                <a href="QUICK_START_zh.html">中文</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="wrap hero-grid">
+            <div>
+                <p class="eyebrow">Quick Start / Blueprint API</p>
+                <h1>Run a local LLM in 10 minutes and call it from Blueprint</h1>
+                <p class="lead">
+                    This page replaces the missing video tutorial: verify that the demo runs, then wire model loading, text chat, multimodal input, JSON/Tools requests, and session release into your own Level Blueprint, Widget, or NPC.
+                </p>
+                <div class="badge-row" aria-label="Key capabilities">
+                    <span class="badge blue">Content/Models</span>
+                    <span class="badge green">Blueprint Function Library</span>
+                    <span class="badge amber">Streaming Callback</span>
+                </div>
+            </div>
+            <aside class="quick-card" aria-label="Shortest path">
+                <h2>Shortest path</h2>
+                <ol>
+                    <li>Confirm the plugin is in <code>Plugins/LiteRT-LM-Unreal</code></li>
+                    <li>Put the model at <code>Content/Models/gemma-4-E2B-it.litertlm</code></li>
+                    <li>Open <code>Content/Demo.umap</code> and run PIE</li>
+                    <li>Send text in the chat box and wait for streaming output</li>
+                    <li>Call <code>Load LiteRT-LM Model</code> before custom Blueprint requests</li>
+                </ol>
+            </aside>
+        </div>
+    </section>
+
+    <main class="wrap layout">
+        <aside class="toc" aria-label="Contents">
+            <p class="toc-title">Contents</p>
+            <a href="#check">Before running</a>
+            <a href="#demo">Run the demo</a>
+            <a href="#blueprint">Blueprint setup</a>
+            <a href="#json">JSON / Tools</a>
+            <a href="#troubleshooting">Troubleshooting</a>
+            <a href="#next">Next steps</a>
+        </aside>
+
+        <div class="content">
+            <section id="check" class="section">
+                <div class="section-header">
+                    <span class="section-number">01</span>
+                    <div>
+                        <h2>Before running</h2>
+                        <p class="section-desc">Resolve path, model, and VRAM issues first. Blueprint debugging is much easier after that.</p>
+                    </div>
+                </div>
+                <div class="grid-3">
+                    <div class="mini-card">
+                        <strong>Engine version</strong>
+                        <p>The project is currently associated with <code>UE 5.7</code>. If you use another version, regenerate project files and build the Editor target first.</p>
+                    </div>
+                    <div class="mini-card">
+                        <strong>Model path</strong>
+                        <p>The default model folder is <code>Content/Models</code>. Avoid non-ASCII project paths when possible because the lower layer uses memory mapping.</p>
+                    </div>
+                    <div class="mini-card">
+                        <strong>VRAM</strong>
+                        <p>Auto config queries available VRAM. On low-memory machines, reduce <code>MaxNumTokens</code> or use the <code>cpu</code> backend.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="demo" class="section">
+                <div class="section-header">
+                    <span class="section-number">02</span>
+                    <div>
+                        <h2>Run the demo first</h2>
+                        <p class="section-desc">The demo validates plugin loading, model loading, session cache, and streaming UI.</p>
+                    </div>
+                </div>
+                <div class="step-list">
+                    <article class="step">
+                        <span class="step-index">1</span>
+                        <div>
+                            <h3>Prepare the project and plugin</h3>
+                            <p>Open <code>LiteRTDemo.uproject</code>. If Unreal asks to compile modules, allow it and wait for completion.</p>
+                            <img class="shot" src="Step0PrepareAProject.png" alt="Prepare project screenshot">
+                        </div>
+                    </article>
+                    <article class="step">
+                        <span class="step-index">2</span>
+                        <div>
+                            <h3>Confirm the model file</h3>
+                            <p>Use the model bundled with the demo, or download the matching LiteRT-LM model from Hugging Face and replace it.</p>
+                            <p><a href="https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm" target="_blank" rel="noreferrer">Open the gemma-4-E2B-it-litert-lm model page</a></p>
+                        </div>
+                    </article>
+                    <article class="step">
+                        <span class="step-index">3</span>
+                        <div>
+                            <h3>Run the map</h3>
+                            <p>Open <code>Demo.umap</code> and click Play. First load can be slow; later requests reuse the session cache.</p>
+                            <img class="shot" src="Step2RunningTheDemo.png" alt="Running demo screenshot">
+                        </div>
+                    </article>
+                    <article class="step">
+                        <span class="step-index">4</span>
+                        <div>
+                            <h3>Send the first message</h3>
+                            <p>Type into the chat box and watch the response stream back chunk by chunk.</p>
+                            <img class="shot" src="Step3SendText.png" alt="Send text screenshot">
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section id="blueprint" class="section">
+                <div class="section-header">
+                    <span class="section-number">03</span>
+                    <div>
+                        <h2>Blueprint setup</h2>
+                        <p class="section-desc">The nodes are under <code>LiteRT-LM</code>. Shared DisplayNames are used to give Blueprint a lightweight overload-like workflow.</p>
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="note">
+                        <strong>Option A: Function library nodes for Level Blueprint / Widget</strong>
+                        <pre><code>Event BeginPlay
+  -> Load LiteRT-LM Model
+     ModelFileName = "gemma-4-E2B-it.litertlm"
+     bUseAutoConfig = true
+
+On Send Button Clicked
+  -> Send LiteRT-LM Chat Request
+     UserMessage = InputText
+     SessionOwner = Self
+     OnChunk: Append Text
+     OnDone: Enable Send Button</code></pre>
+                    </div>
+                    <div class="note">
+                        <strong>Option B: Component node for NPC / Actor</strong>
+                        <pre><code>LiteRtLmComponent
+  SystemPrompt = "You are a tavern keeper."
+  SamplingParams.MaxTokens = 256
+
+Bind:
+  OnTextChunkReceived -> Update subtitle
+  OnInferenceCompleted -> Store result
+
+Call:
+  Send LiteRT-LM Chat Message
+  Send LiteRT-LM Chat Message + Sampling Params</code></pre>
+                    </div>
+                </div>
+
+                <div class="table-wrap node-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Node</th>
+                                <th>Use</th>
+                                <th>Common inputs</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Load LiteRT-LM Model</code></td>
+                                <td>Load a model from config, absolute path, or a file name under project <code>Content/Models</code>.</td>
+                                <td><code>ModelFileName</code>, <code>bUseAutoConfig</code>, <code>Backend</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>Send LiteRT-LM Chat Request</code></td>
+                                <td>Send text, system prompt, multimodal paths, or OpenAI-style JSON messages.</td>
+                                <td><code>UserMessage</code>, <code>SystemPrompt</code>, <code>ImagePath</code>, <code>MessagesJson</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>Make LiteRT-LM Sampling Params</code></td>
+                                <td>Create request-level temperature, TopP, TopK, max-token, and constrained decoding parameters.</td>
+                                <td><code>Temperature</code>, <code>MaxTokens</code>, <code>ConstraintType</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>Release LiteRT-LM Session</code></td>
+                                <td>Clear the session and KV Cache associated with a SessionOwner.</td>
+                                <td><code>SessionOwner</code>, usually Actor, Widget, or Self.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="json" class="section">
+                <div class="section-header">
+                    <span class="section-number">04</span>
+                    <div>
+                        <h2>JSON / Tools request example</h2>
+                        <p class="section-desc">Use the JSON chat request node when you need complete history or tool calls.</p>
+                    </div>
+                </div>
+                <div class="code-grid">
+                    <div>
+                        <p class="toc-title">MessagesJson</p>
+                        <pre><code>[
+  {
+    "role": "system",
+    "content": "You are a concise game NPC."
+  },
+  {
+    "role": "user",
+    "content": "Give me a tavern keeper greeting."
+  }
+]</code></pre>
+                    </div>
+                    <div>
+                        <p class="toc-title">ToolsJson</p>
+                        <pre><code>[
+  {
+    "name": "set_npc_mood",
+    "description": "Set NPC mood",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "mood": { "type": "string" }
+      }
+    }
+  }
+]</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <section id="troubleshooting" class="section">
+                <div class="section-header">
+                    <span class="section-number">05</span>
+                    <div>
+                        <h2>Troubleshooting</h2>
+                        <p class="section-desc">Start here for the most common demo and integration issues.</p>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Symptom</th>
+                                <th>First check</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Model load fails</td>
+                                <td>Verify <code>ModelPath</code> points to a real file. Use <code>Resolve LiteRT-LM Model Path</code> to confirm the path.</td>
+                            </tr>
+                            <tr>
+                                <td>First request is slow</td>
+                                <td>The first call creates the engine, loads weights, and warms the GPU. Load the model on a loading screen.</td>
+                            </tr>
+                            <tr>
+                                <td>NPCs share memory unexpectedly</td>
+                                <td>Pass a different <code>SessionOwner</code> per NPC. The same object reuses the same session cache.</td>
+                            </tr>
+                            <tr>
+                                <td>VRAM is low</td>
+                                <td>Use auto config, reduce <code>MaxNumTokens</code>, or switch <code>Backend</code> to <code>cpu</code>.</td>
+                            </tr>
+                            <tr>
+                                <td>Conversation needs reset</td>
+                                <td>Use <code>ResetConversation</code> on the component, or <code>Release LiteRT-LM Session</code> in the function library.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="next" class="section">
+                <div class="section-header">
+                    <span class="section-number">06</span>
+                    <div>
+                        <h2>Next steps</h2>
+                        <p class="section-desc">After the demo works, continue with the layer-specific docs you need.</p>
+                    </div>
+                </div>
+                <div class="grid-3">
+                    <a class="mini-card" href="../plugin/APP_LAYER.html">
+                        <strong>Application Layer</strong>
+                        <p>Learn the demo UI, sessions, and request flow.</p>
+                    </a>
+                    <a class="mini-card" href="../plugin/api_reference.html">
+                        <strong>API Reference</strong>
+                        <p>Inspect structs, callbacks, and high-level interfaces.</p>
+                    </a>
+                    <a class="mini-card" href="../plugin/SHIPPING.html">
+                        <strong>Packaging</strong>
+                        <p>Check DLLs, models, and platform dependencies.</p>
+                    </a>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="wrap footer-inner">
+            <span>LiteRT-LM Unreal / Winyunq Core Engineering</span>
+            <span>QUICK_START.html / Offline-ready static page</span>
+        </div>
+    </footer>
+</body>
+</html>

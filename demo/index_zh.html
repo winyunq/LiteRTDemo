@@ -1,0 +1,42 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRTDemo Demo 文档</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .hub { max-width: 1120px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+        .hub-nav { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-bottom: 1rem; }
+        .hub-nav a { font-weight: 800; }
+        .search { width: 100%; min-height: 2.7rem; padding: .7rem .9rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); color: var(--doc-text); font: inherit; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .9rem; margin-top: 1rem; }
+        .doc-card { display: block; padding: 1rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .doc-card span { color: var(--doc-blue); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+        .doc-card strong { display: block; margin: .55rem 0 .2rem; color: var(--doc-text); }
+        .doc-card p { margin: 0; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="hub">
+        <nav class="hub-nav"><a href="../index_zh.html">返回总入口</a><a href="index.html">English</a></nav>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>Demo 文档</h1>
+        <p>这里仅放运行 LiteRTDemo 和教学 Demo 相关内容。插件 API、Wrapper 和服务层维护文档请进入插件文档。</p>
+        <input id="docSearch" class="search" type="search" placeholder="Search / 搜索" autocomplete="off">
+        <div id="docGrid" class="grid"><a class="doc-card" data-search="快速开始 quick start demo model blueprint" href="QUICK_START_zh.html"><span>Demo</span><strong>快速开始</strong><p>模型放置、运行 Demo、蓝图发起请求。</p></a>
+<a class="doc-card" data-search="demo cases 示例 场景" href="DEMO_CASES_zh.html"><span>Demo</span><strong>实战 Demo</strong><p>Demo 场景和交互用例。</p></a>
+<a class="doc-card" data-search="狼人杀 werewolf blueprint demo 教学" href="AI_WEREWOLF_BLUEPRINT_PLAN_zh.html"><span>Demo Plan</span><strong>AI 狼人杀蓝图升级方案</strong><p>把 Demo 扩展为教学案例的蓝图优先方案。</p></a></div>
+    </main>
+    <script>
+        const input = document.getElementById('docSearch');
+        const cards = Array.from(document.querySelectorAll('.doc-card'));
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            cards.forEach(card => { card.style.display = !q || card.dataset.search.toLowerCase().includes(q) ? '' : 'none'; });
+        });
+    </script>
+</body>
+</html>

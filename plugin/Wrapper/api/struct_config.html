@@ -1,0 +1,145 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRtLm_Config - LiteRT-LM API Reference</title>
+    <style>
+        body { background: #050505; color: #D1D5DB; font-family: 'Inter', sans-serif; }
+        .content-card { background: #0C0C0E; border: 1px solid #1A1A1A; border-radius: 1rem; padding: 2.5rem; margin-bottom: 2.5rem; }
+        h1 { color: #FFFFFF; font-weight: 800; letter-spacing: -0.02em; }
+        .mermaid { background: #000; padding: 1.5rem; border-radius: 1rem; border: 1px solid #111; }
+        code { font-family: 'Fira Code', monospace; color: #60A5FA; }
+        .api-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .api-table th { text-align: left; padding: 1rem; border-bottom: 2px solid #1A1A1A; color: #3B82F6; text-transform: uppercase; }
+        .api-table td { padding: 1rem; border-bottom: 1px solid #111; vertical-align: top; }
+        pre { background: #080808; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #111; overflow-x: auto; }
+    </style>
+    <link rel="stylesheet" href="../../assets/docs.css">
+    <script defer src="../../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-12 md:p-20">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-end gap-4 mb-6">
+            <span class="text-[10px] font-black uppercase tracking-widest text-blue-500">EN</span>
+            <a href="struct_config_zh.html" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-all">中文</a>
+        </div>
+
+        <a href="../index.html" class="text-gray-600 hover:text-blue-500 mb-8 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Overview
+        </a>
+
+        <header class="mb-16">
+            <h1 class="text-5xl mb-4 font-black">LiteRtLm_Config</h1>
+            <p class="text-gray-500 text-lg">Engine initialization parameter structure. Defines model weight loading paths, compute backend topology, and resource pre-allocation strategies.</p>
+        </header>
+
+        <!-- Section 1: Lifecycle / Context Diagram -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">01. Context Lifecycle Diagram</h3>
+            <div class="content-card">
+                <div class="mermaid">
+                    graph LR
+                        Config[LiteRtLm_Config] -->|Input| Create[LiteRtLm_CreateEngine]
+                        Create -->|Success| Handle[void* Engine Handle]
+                        Create -->|Fail| Null[NULL / Error Log]
+                        
+                        subgraph HW_Binding [Compute Binding]
+                            Config -.-> Backend[Select Backend: GPU/CPU]
+                            Config -.-> VRAM[Lock Model Weight Buffer]
+                        end
+                </div>
+                <p class="text-xs text-gray-600 mt-6 italic">
+                    The <code>Config</code> structure is the "seed" of the entire inference pipeline. Once populated in memory, it is passed directly to the <code>CreateEngine</code> function, anchoring the configuration within the engine instance until destruction.
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 2: Fields Table -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">02. Member Variable Details</h3>
+            <div class="content-card">
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th class="w-1/4">Member</th>
+                            <th class="w-1/6">Type</th>
+                            <th>Description & Responsibilities</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>model_path</code></td>
+                            <td><code>const char*</code></td>
+                            <td>
+                                <b>Absolute path to the model file.</b><br/>
+                                Must point to a valid .bin or .tflite weight file. The DLL opens this file in read-only mode.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>backend</code></td>
+                            <td><code>const char*</code></td>
+                            <td>
+                                <b>Inference backend chain.</b><br/>
+                                Example: <code>"gpu"</code>, <code>"cpu"</code>, <code>"gpu,cpu"</code>.<br/>
+                                Specifies preferred devices, comma-separated, tried in order of priority.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>max_num_tokens</code></td>
+                            <td><code>int</code></td>
+                            <td>
+                                <b>Total KV Cache context capacity.</b><br/>
+                                Determines the size of the pre-allocated GPU KV Cache buffer. Recommended to set to the model's maximum supported length (e.g., 2048, 4096).
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>num_threads</code></td>
+                            <td><code>int</code></td>
+                            <td>
+                                <b>CPU Parallelism.</b><br/>
+                                Only effective when <code>backend</code> includes CPU. Determines the thread pool size for XNNPACK.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>bOptimizeShader</code></td>
+                            <td><code>int</code></td>
+                            <td>
+                                <b>[UE5 Specific] Shader Optimization Switch.</b><br/>
+                                When set to 1, the DLL performs instruction pre-compilation during WebGPU initialization to reduce stuttering during inference.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 3: Usage Example -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">03. C Language Usage Example</h3>
+            <div class="content-card">
+                <pre><code>// 1. Initialize configuration object
+LiteRtLm_Config config = {0};
+config.model_path = "D:/Models/Gemma-2b-it.tflite";
+config.backend = "gpu";         // Prefer WebGPU acceleration
+config.max_num_tokens = 2048;   // Reserve 2k context
+config.num_threads = 8;         // Use 8 threads if falling back to CPU
+config.bOptimizeShader = 1;     // Enable shader pre-optimization
+
+// 2. Pass to engine creation function
+void* engine = LiteRtLm_CreateEngine(config);
+
+if (engine == NULL) {
+    // Handle initialization failure...
+}</code></pre>
+            </div>
+        </section>
+
+        <footer class="pt-12 border-t border-gray-900 text-[10px] text-gray-700 font-bold uppercase tracking-[0.5em] flex justify-between">
+            <div>LiteRT-LM Engineering Standard</div>
+            <div>© 2026 Winyunq</div>
+        </footer>
+    </div>
+    </body>
+</html>

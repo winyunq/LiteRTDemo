@@ -1,0 +1,104 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context Window Management | Winyunq Engineering</title>
+    <style>
+        body { background-color: #050506; color: #E2E8F0; font-family: 'Inter', sans-serif; line-height: 1.6; }
+        .canvas { background: #000; border: 1px solid #1E1E22; border-radius: 24px; padding: 2rem; margin: 2rem 0; box-shadow: inset 0 0 40px rgba(0,0,0,0.5); }
+        .label { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2em; color: #3B82F6; margin-bottom: 1rem; }
+        .card { background: #0F0F11; border: 1px solid #1E1E22; padding: 2rem; border-radius: 20px; margin-bottom: 3rem; }
+        b { color: #FFF; }
+        code { color: #3B82F6; font-family: 'Fira Code', monospace; font-size: 0.85em; background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; }
+        pre { background: #000; padding: 1.5rem; border-radius: 12px; border: 1px solid #1A1A1A; overflow-x: auto; font-size: 0.75rem; color: #94A3B8; margin-top: 1.5rem; }
+    </style>
+    <link rel="stylesheet" href="../assets/docs.css">
+    <script defer src="../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-8 md:p-20 max-w-5xl mx-auto">
+    <a href="../APP_LAYER.html" class="inline-flex items-center gap-2 text-zinc-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest mb-12">
+        <i data-lucide="arrow-left" class="w-3 h-3"></i> Back to Portal
+    </a>
+
+    <header class="mb-32">
+        <div class="label">Concept 04 / Bounds & Sliding</div>
+        <h1 class="text-6xl font-black text-white tracking-tighter italic mb-4 leading-none uppercase">Context <span class="text-blue-600">Window</span></h1>
+        <p class="text-zinc-500 uppercase tracking-[0.5em] text-[11px] font-bold">128K Physical Standard and Sliding Window Strategies</p>
+    </header>
+
+    <!-- Visual Atlas -->
+    <section class="mb-32">
+        <div class="label">Physical Atlas / Sliding Window Mechanics</div>
+        <div class="canvas">
+            <svg viewBox="0 0 800 200" class="w-full">
+                <!-- Context Track -->
+                <rect x="50" y="80" width="700" height="40" rx="4" fill="#111" stroke="#333"/>
+                
+                <!-- Fixed System Prompt -->
+                <rect x="50" y="80" width="120" height="40" rx="4" fill="#1E3A8A" stroke="#3B82F6"/>
+                <text x="110" y="105" text-anchor="middle" fill="#FFF" font-size="9" font-weight="bold">System Pinned</text>
+
+                <!-- Active Window -->
+                <rect x="250" y="70" width="450" height="60" rx="8" fill="#3B82F610" stroke="#3B82F6" stroke-width="2" stroke-dasharray="4,4"/>
+                <text x="475" y="60" text-anchor="middle" fill="#3B82F6" font-size="9" font-weight="black">ACTIVE 128K WINDOW</text>
+
+                <!-- Evicted Data -->
+                <rect x="175" y="85" width="70" height="30" rx="4" fill="#EF444410" stroke="#EF4444" opacity="0.4"/>
+                <text x="210" y="105" text-anchor="middle" fill="#EF4444" font-size="8" opacity="0.6">Evicted</text>
+
+                <path d="M 720 100 L 760 100" stroke="#3B82F6" stroke-width="2" marker-end="url(#arrow)"/>
+                
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Technical Deep Dive -->
+    <section class="mb-32">
+        <div class="label">01 / Technical Depth</div>
+        <div class="card">
+            <p class="text-sm text-zinc-400">
+                The context window defines the length of an AI NPC's "working memory." In <code>LiteRTDemo</code>, we adopt the <b>128K (131,072) Tokens</b> physical standard.
+            </p>
+            <ul class="mt-6 space-y-4 text-xs text-zinc-500 list-none">
+                <li class="flex gap-4 p-4 bg-black/40 rounded-lg">
+                    <i data-lucide="anchor" class="text-blue-500 w-5 h-5"></i>
+                    <div><b>Persona Anchoring:</b> The kernel automatically protects the <code>System Prompt</code>. Even when sliding window eviction occurs, the core personality weights are preserved.</div>
+                </li>
+                <li class="flex gap-4 p-4 bg-black/40 rounded-lg">
+                    <i data-lucide="move" class="text-blue-500 w-5 h-5"></i>
+                    <div><b>Sliding Physics:</b> When the VRAM slot is full, the kernel physically evicts the oldest non-system messages. With a 128K window, this is rarely triggered in typical gameplay.</div>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Code Demo -->
+    <section class="mb-32">
+        <div class="label">02 / Source Code Demo</div>
+        <div class="card">
+            <p class="text-sm text-zinc-400">Defining physical bounds in <code>FUmgMcpLiteRtLmAiProvider</code>:</p>
+            <pre><code>// 1. Set 128K Ultra-long Context Standard
+FLiteRtLmConfig Config = FLiteRtLmUnrealApi::GetAutoConfig();
+<span class="text-blue-500">Config.MaxNumTokens = 128 * 1024; </span> // Allocates ~1.5GB KV Cache
+
+// 2. Limit single response length
+FLiteRtLmSamplingParams Params;
+<span class="text-blue-500">Params.MaxTokens = 4096;</span> // Prevent budget exhaustion by single response
+
+// 3. Application Push
+FLiteRtLmUnrealApi::SendChatRequest(..., Params);</code></pre>
+        </div>
+    </section>
+
+    <footer class="mt-40 pt-10 border-t border-zinc-900 text-center">
+        <p class="text-[10px] text-zinc-700 uppercase tracking-widest">LiteRT-LM / Winyunq Core Engineering / v2.7</p>
+    </footer>
+    </body>
+</html>

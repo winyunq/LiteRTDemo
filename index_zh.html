@@ -1,0 +1,31 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRTDemo 文档入口</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .portal { max-width: 1080px; margin: 0 auto; padding: 4rem 1rem; }
+        .portal-top { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 2rem; }
+        .portal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+        .portal-card { display: block; min-height: 12rem; padding: 1.25rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .portal-card span { color: var(--doc-blue); font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+        .portal-card strong { display: block; margin: .8rem 0 .35rem; color: var(--doc-text); font-size: 1.25rem; }
+        .portal-card p { margin: 0; }
+        .lang { font-weight: 800; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="portal">
+        <div class="portal-top"><a href="https://github.com/winyunq/LiteRTDemo">GitHub</a><a class="lang" href="index.html">English</a></div>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>Demo 文档和插件文档分开阅读</h1>
+        <p>这个 GitHub Pages 入口只做分类。Demo 文档面向运行项目和示例玩法；插件文档面向 API、Wrapper、运行时层级和维护。</p>
+        <div class="portal-grid"><a class="portal-card" href="demo/index_zh.html"><span>Demo</span><strong>Demo 文档</strong><p>运行 LiteRTDemo、模型放置、蓝图接入、示例玩法与教学方案。</p></a>
+<a class="portal-card" href="plugin/index_zh.html"><span>Plugin</span><strong>插件文档</strong><p>LiteRT-LM Unreal 插件、C API、Wrapper、应用层、服务层和发布维护说明。</p></a></div>
+    </main>
+</body>
+</html>

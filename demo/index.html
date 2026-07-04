@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRTDemo Demo Docs</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .hub { max-width: 1120px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+        .hub-nav { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-bottom: 1rem; }
+        .hub-nav a { font-weight: 800; }
+        .search { width: 100%; min-height: 2.7rem; padding: .7rem .9rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); color: var(--doc-text); font: inherit; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .9rem; margin-top: 1rem; }
+        .doc-card { display: block; padding: 1rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .doc-card span { color: var(--doc-blue); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+        .doc-card strong { display: block; margin: .55rem 0 .2rem; color: var(--doc-text); }
+        .doc-card p { margin: 0; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="hub">
+        <nav class="hub-nav"><a href="../index.html">Back to entry</a><a href="index_zh.html">中文</a></nav>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>Demo Docs</h1>
+        <p>This section only covers running LiteRTDemo and demo scenarios. Plugin APIs, Wrapper internals, and service-layer maintenance live in Plugin Docs.</p>
+        <input id="docSearch" class="search" type="search" placeholder="Search / 搜索" autocomplete="off">
+        <div id="docGrid" class="grid"><a class="doc-card" data-search="quick start demo model blueprint" href="QUICK_START.html"><span>Demo</span><strong>Quick Start</strong><p>Place models, run the demo, and send Blueprint requests.</p></a>
+<a class="doc-card" data-search="demo cases examples scenes" href="DEMO_CASES.html"><span>Demo</span><strong>Practical Demos</strong><p>Demo scenes and interaction cases.</p></a></div>
+    </main>
+    <script>
+        const input = document.getElementById('docSearch');
+        const cards = Array.from(document.querySelectorAll('.doc-card'));
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            cards.forEach(card => { card.style.display = !q || card.dataset.search.toLowerCase().includes(q) ? '' : 'none'; });
+        });
+    </script>
+</body>
+</html>

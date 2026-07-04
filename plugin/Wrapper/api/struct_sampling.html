@@ -1,0 +1,144 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRtLm_SamplingParams - LiteRT-LM API Reference</title>
+    <style>
+        body { background: #050505; color: #D1D5DB; font-family: 'Inter', sans-serif; }
+        .content-card { background: #0C0C0E; border: 1px solid #1A1A1A; border-radius: 1rem; padding: 2.5rem; margin-bottom: 2.5rem; }
+        h1 { color: #FFFFFF; font-weight: 800; letter-spacing: -0.02em; }
+        .mermaid { background: #000; padding: 1.5rem; border-radius: 1rem; border: 1px solid #111; }
+        code { font-family: 'Fira Code', monospace; color: #60A5FA; }
+        .api-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .api-table th { text-align: left; padding: 1rem; border-bottom: 2px solid #1A1A1A; color: #3B82F6; text-transform: uppercase; }
+        .api-table td { padding: 1rem; border-bottom: 1px solid #111; vertical-align: top; }
+        pre { background: #080808; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #111; overflow-x: auto; }
+        .warning-box { border-left: 4px solid #B45309; background: rgba(180, 83, 9, 0.1); padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+    </style>
+    <link rel="stylesheet" href="../../assets/docs.css">
+    <script defer src="../../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-12 md:p-20">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-end gap-4 mb-6">
+            <span class="text-[10px] font-black uppercase tracking-widest text-blue-500">EN</span>
+            <a href="struct_sampling_zh.html" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-all">中文</a>
+        </div>
+
+        <a href="../index.html" class="text-gray-600 hover:text-blue-500 mb-8 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Overview
+        </a>
+
+        <header class="mb-16">
+            <h1 class="text-5xl mb-4 font-black">LiteRtLm_SamplingParams</h1>
+            <p class="text-gray-500 text-lg">Sampling and constraint parameter structure. Controls the creativity of text generation (Temperature/Top-P) and hard constraints on output format (JSON/Regex).</p>
+        </header>
+
+        <!-- Section 1: Lifecycle / Context Diagram -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">01. Role Context in Generation Loop</h3>
+            <div class="content-card">
+                <div class="mermaid">
+                    graph TD
+                        Params[LiteRtLm_SamplingParams] -->|Input| Run[LiteRtLm_RunInference]
+                        subgraph Inference_Loop [Kernel Generation Loop]
+                            Logits[Raw Logits] --> Sampling[Sampling Logic: Temp/Top-P]
+                            Sampling --> Constraint[Constraint Correction: LLGuidance]
+                            Constraint -->|Next Token| Result[Append to Result]
+                        end
+                        Params -.->|Controls| Sampling
+                        Params -.->|Provides Grammar/Regex| Constraint
+                </div>
+                <p class="text-xs text-gray-600 mt-6 italic">
+                    <code>SamplingParams</code> not only determines the "personality" of the AI but also, through the llguidance integration layer, forces the output to conform to a specific Schema (like JSON).
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 2: Fields Table -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">02. Member Variable Details</h3>
+            <div class="content-card">
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th class="w-1/4">Member</th>
+                            <th class="w-1/6">Type</th>
+                            <th>Description & Constraints</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>temperature</code></td>
+                            <td><code>float</code></td>
+                            <td>
+                                <b>Sampling Temperature.</b> Range [0.0, 2.0].<br/>
+                                0.0 indicates Greedy search for deterministic results; 1.0 is standard creativity.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>top_p</code></td>
+                            <td><code>float</code></td>
+                            <td>
+                                <b>Nucleus Sampling.</b> Range [0.0, 1.0].<br/>
+                                Samples only from the set of candidates whose cumulative probability reaches P. Usually set to 0.9.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>max_tokens</code></td>
+                            <td><code>int</code></td>
+                            <td>
+                                <b>Generation Limit.</b><br/>
+                                Forcibly stops after this many tokens, regardless of whether an EOF token was generated.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>constraint_type</code></td>
+                            <td><code>int</code></td>
+                            <td>
+                                <b>Hard Constraint Type.</b><br/>
+                                0: No constraint | 1: Regex | 2: JSON Schema | 3: Lark Grammar.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>constraint_string</code></td>
+                            <td><code>const char*</code></td>
+                            <td>
+                                <b>Constraint Description String.</b><br/>
+                                Passes the corresponding Regex or JSON Schema based on <code>constraint_type</code>.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="warning-box text-xs">
+                    <b>Note:</b> When <code>constraint_type > 0</code>, the first token latency might increase slightly due to the initialization of the llguidance grammar state machine.
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Usage Example -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">03. C Language Usage Example (JSON Constraint)</h3>
+            <div class="content-card">
+                <pre><code>LiteRtLm_SamplingParams params = {0};
+params.temperature = 0.0f; // 0 temperature is recommended for structured output
+params.max_tokens = 512;
+
+// Enable hard JSON Schema constraint
+params.constraint_type = 2; 
+params.constraint_string = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}}";
+
+// Apply to inference
+LiteRtLm_RunInference(conversation, params, MyCallback, NULL);</code></pre>
+            </div>
+        </section>
+
+        <footer class="pt-12 border-t border-gray-900 text-[10px] text-gray-700 font-bold uppercase tracking-[0.5em] flex justify-between">
+            <div>LiteRT-LM Engineering Standard</div>
+            <div>© 2026 Winyunq</div>
+        </footer>
+    </div>
+    </body>
+</html>

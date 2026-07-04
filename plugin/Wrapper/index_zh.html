@@ -1,0 +1,201 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRT-LM C API 与 DLL 架构 | Wrapper</title>
+    <link rel="stylesheet" href="../assets/docs.css">
+    <script defer src="../assets/docs.js"></script>
+    <style>
+        .wrapper-hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.8fr);
+            gap: 1.25rem;
+            align-items: stretch;
+            padding: 1.5rem;
+            margin: 1rem auto 1.35rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-surface);
+            box-shadow: var(--doc-shadow);
+        }
+        .wrapper-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            margin-bottom: 1.25rem;
+        }
+        .wrapper-nav a,
+        .pill-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 2rem;
+            padding: 0.35rem 0.65rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 999px;
+            background: var(--doc-soft);
+            color: var(--doc-blue);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .hero-panel {
+            display: grid;
+            align-content: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-blue-soft);
+        }
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.85rem;
+        }
+        .api-card {
+            display: block;
+            padding: 1rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-surface);
+        }
+        .api-card strong {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 0.75rem;
+        }
+        .flow-step {
+            padding: 0.9rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-soft);
+        }
+        .flow-step b {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        @media (max-width: 760px) {
+            .wrapper-hero {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page wrapper-index">
+    <main>
+        <header class="wrapper-hero">
+            <div>
+                <nav class="wrapper-nav" aria-label="文档导航">
+                    <a href="../index_zh.html">返回主手册</a>
+                    <a href="index.html">English</a>
+                    <a href="../../demo/QUICK_START_zh.html">快速开始</a>
+                    <a href="guide_zh.html">C++ 示例</a>
+                    <a href="multimodal_whitepaper_zh.html">多模态白皮书</a>
+                </nav>
+                <p class="eyebrow">Wrapper / C ABI / DLL</p>
+                <h1>LiteRT-LM C API 与 DLL 架构</h1>
+                <p>
+                    本页整理 `litert_lm_wrapper.dll` 对外暴露的稳定 C ABI。维护重点是让调用顺序、结构体字段、同步消息和推理入口可以被快速定位；如果只需要蓝图调用，请从主手册进入 Unreal 插件章节。
+                </p>
+            </div>
+            <aside class="hero-panel" aria-label="推荐阅读顺序">
+                <strong>推荐阅读顺序</strong>
+                <span>先确认后端与模型路径，再创建 Engine 和 Conversation，最后追加消息并运行推理。</span>
+                <a class="pill-link" href="api/run_inference_zh.html">核心入口：LiteRtLm_RunInference</a>
+            </aside>
+        </header>
+
+        <section id="lifecycle">
+            <p class="eyebrow">Lifecycle</p>
+            <h2>最小调用链</h2>
+            <div class="flow">
+                <div class="flow-step">
+                    <b>1. 查询后端</b>
+                    <a href="api/get_backends_zh.html">LiteRtLm_GetAvailableBackends</a>
+                </div>
+                <div class="flow-step">
+                    <b>2. 创建引擎</b>
+                    <a href="api/create_engine_zh.html">LiteRtLm_CreateEngine</a>
+                </div>
+                <div class="flow-step">
+                    <b>3. 创建会话</b>
+                    <a href="api/create_conv_zh.html">LiteRtLm_CreateConversation</a>
+                </div>
+                <div class="flow-step">
+                    <b>4. 追加消息</b>
+                    <a href="api/append_user_zh.html">AppendUserMessage</a>
+                </div>
+                <div class="flow-step">
+                    <b>5. 执行推理</b>
+                    <a href="api/run_inference_zh.html">LiteRtLm_RunInference</a>
+                </div>
+                <div class="flow-step">
+                    <b>6. 释放资源</b>
+                    <a href="api/destroy_conv_zh.html">DestroyConversation</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="structs">
+            <p class="eyebrow">Data Contract</p>
+            <h2>结构体与回调</h2>
+            <div class="api-grid">
+                <a class="api-card" href="api/struct_config_zh.html">
+                    <strong>LiteRtLm_Config</strong>
+                    <span>模型路径、后端、设备、LoRA、视觉与音频模型路径等初始化参数。</span>
+                </a>
+                <a class="api-card" href="api/struct_sampling_zh.html">
+                    <strong>LiteRtLm_SamplingParams</strong>
+                    <span>温度、Top-K、Top-P、随机种子和最大输出长度等采样参数。</span>
+                </a>
+                <a class="api-card" href="api/struct_result_zh.html">
+                    <strong>LiteRtLm_Result</strong>
+                    <span>同步调用结果，包含错误码、错误文本和可释放的返回缓冲区。</span>
+                </a>
+                <a class="api-card" href="api/callback_typedef_zh.html">
+                    <strong>LiteRtLmCallback</strong>
+                    <span>流式 Token、错误、完成状态和用户上下文指针的回调协议。</span>
+                </a>
+            </div>
+        </section>
+
+        <section id="functions">
+            <p class="eyebrow">Function Index</p>
+            <h2>函数索引</h2>
+            <table>
+                <thead>
+                    <tr><th>阶段</th><th>API</th><th>用途</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>初始化</td><td><a href="api/create_engine_zh.html">LiteRtLm_CreateEngine</a></td><td>根据 `LiteRtLm_Config` 加载模型并创建引擎句柄。</td></tr>
+                    <tr><td>初始化</td><td><a href="api/create_conv_config_zh.html">LiteRtLm_CreateConversationWithConfig</a></td><td>创建带自定义参数的 Conversation。</td></tr>
+                    <tr><td>消息</td><td><a href="api/append_user_zh.html">LiteRtLm_AppendUserMessage</a></td><td>追加用户消息，适合文本与多模态输入封装前的常规路径。</td></tr>
+                    <tr><td>消息</td><td><a href="api/append_json_zh.html">LiteRtLm_AppendMessageJson</a></td><td>追加符合 chat schema 的 JSON 消息数组。</td></tr>
+                    <tr><td>消息</td><td><a href="api/append_assistant_zh.html">LiteRtLm_AppendAssistantMessage</a></td><td>追加历史助手消息，用于恢复上下文或记录工具调用结果。</td></tr>
+                    <tr><td>推理</td><td><a href="api/run_inference_zh.html">LiteRtLm_RunInference</a></td><td>驱动生成并通过回调返回流式结果。</td></tr>
+                    <tr><td>推理</td><td><a href="api/stop_message_zh.html">LiteRtLm_StopMessage</a></td><td>请求中止当前生成。</td></tr>
+                    <tr><td>推理</td><td><a href="api/wait_until_done_zh.html">LiteRtLm_WaitUntilDone</a></td><td>在同步场景中等待当前生成完成。</td></tr>
+                    <tr><td>销毁</td><td><a href="api/destroy_conv_zh.html">LiteRtLm_DestroyConversation</a></td><td>释放会话句柄。</td></tr>
+                    <tr><td>销毁</td><td><a href="api/destroy_engine_zh.html">LiteRtLm_DestroyEngine</a></td><td>释放引擎句柄和底层资源。</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="maintenance">
+            <p class="eyebrow">Maintenance</p>
+            <h2>维护检查清单</h2>
+            <ul>
+                <li>新增或重命名 C API 时，同步更新本页、主索引和对应的中英文 API 详情页。</li>
+                <li>修改 `LiteRtLm_Config` 或 `LiteRtLm_SamplingParams` 字段时，同时检查蓝图封装和快速开始页。</li>
+                <li>所有文档应保持离线可读，不依赖 CDN 字体、图标或脚本。</li>
+                <li>示例代码优先指向 <a href="guide_zh.html">C++ 实战集成</a>，设计说明优先指向 <a href="multimodal_whitepaper_zh.html">多模态白皮书</a>。</li>
+            </ul>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,31 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRTDemo Documentation</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .portal { max-width: 1080px; margin: 0 auto; padding: 4rem 1rem; }
+        .portal-top { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 2rem; }
+        .portal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+        .portal-card { display: block; min-height: 12rem; padding: 1.25rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .portal-card span { color: var(--doc-blue); font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+        .portal-card strong { display: block; margin: .8rem 0 .35rem; color: var(--doc-text); font-size: 1.25rem; }
+        .portal-card p { margin: 0; }
+        .lang { font-weight: 800; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="portal">
+        <div class="portal-top"><a href="https://github.com/winyunq/LiteRTDemo">GitHub</a><a class="lang" href="index_zh.html">中文</a></div>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>Demo docs and plugin docs are separated</h1>
+        <p>This GitHub Pages entry point separates project usage from plugin maintenance. Demo docs are for running examples; plugin docs are for APIs, wrapper internals, runtime layers, and shipping.</p>
+        <div class="portal-grid"><a class="portal-card" href="demo/index.html"><span>Demo</span><strong>Demo Docs</strong><p>Run LiteRTDemo, place models, connect Blueprint requests, and inspect demo scenarios.</p></a>
+<a class="portal-card" href="plugin/index.html"><span>Plugin</span><strong>Plugin Docs</strong><p>LiteRT-LM Unreal plugin APIs, C ABI, Wrapper, application/service layers, and shipping notes.</p></a></div>
+    </main>
+</body>
+</html>

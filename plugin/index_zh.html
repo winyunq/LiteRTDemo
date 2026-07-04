@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRT-LM Unreal 插件文档</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .hub { max-width: 1120px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+        .hub-nav { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-bottom: 1rem; }
+        .hub-nav a { font-weight: 800; }
+        .search { width: 100%; min-height: 2.7rem; padding: .7rem .9rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); color: var(--doc-text); font: inherit; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .9rem; margin-top: 1rem; }
+        .doc-card { display: block; padding: 1rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .doc-card span { color: var(--doc-blue); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+        .doc-card strong { display: block; margin: .55rem 0 .2rem; color: var(--doc-text); }
+        .doc-card p { margin: 0; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="hub">
+        <nav class="hub-nav"><a href="../index_zh.html">返回总入口</a><a href="index.html">English</a></nav>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>插件文档</h1>
+        <p>这里仅放 LiteRT-LM Unreal 插件、Wrapper、C API、应用层、服务层、配置和发布维护内容。Demo 运行说明请进入 Demo 文档。</p>
+        <input id="docSearch" class="search" type="search" placeholder="Search / 搜索" autocomplete="off">
+        <div id="docGrid" class="grid"><a class="doc-card" data-search="架构 总览 api subsystem unreal" href="api_reference_zh.html"><span>总览</span><strong>系统架构全貌</strong><p>模块关系、调用链和高层结构。</p></a>
+<a class="doc-card" data-search="api layer 底层 结构" href="API_LAYER_zh.html"><span>API</span><strong>API 层说明</strong><p>底层 API 层职责和结构。</p></a>
+<a class="doc-card" data-search="app layer 应用层 消息 会话" href="APP_LAYER_zh.html"><span>应用层</span><strong>应用层总览</strong><p>消息、会话、流式输出和结构化约束。</p></a>
+<a class="doc-card" data-search="service layer 服务层 资源 调度" href="SERVICE_LAYER_zh.html"><span>服务层</span><strong>服务层总览</strong><p>资源、调度、管道和释放。</p></a>
+<a class="doc-card" data-search="初始化 config model backend" href="INITIALIZATION_CONFIG_zh.html"><span>配置</span><strong>初始化与配置</strong><p>模型路径、后端和基础运行参数。</p></a>
+<a class="doc-card" data-search="shipping 发布 打包 dll model" href="SHIPPING_zh.html"><span>发布</span><strong>打包与发布</strong><p>DLL、模型、平台依赖和资源路径检查。</p></a>
+<a class="doc-card" data-search="dll wrapper c api 工程" href="dll_reference_zh.html"><span>Wrapper</span><strong>DLL 工程参考</strong><p>LiteRT-LM DLL 的工程集成与底层依赖。</p></a>
+<a class="doc-card" data-search="wrapper c api run inference" href="Wrapper/index_zh.html"><span>Wrapper</span><strong>Wrapper 架构规范</strong><p>C API、生命周期、结构体和推理入口。</p></a>
+<a class="doc-card" data-search="guide integration cpp" href="Wrapper/guide_zh.html"><span>Wrapper</span><strong>实战集成导引</strong><p>C/C++ main.cpp 风格调用流程。</p></a>
+<a class="doc-card" data-search="multimodal gemma image audio" href="Wrapper/multimodal_whitepaper_zh.html"><span>Wrapper</span><strong>多模态白皮书</strong><p>多模态 Tensor 分配和线程安全分析。</p></a></div>
+    </main>
+    <script>
+        const input = document.getElementById('docSearch');
+        const cards = Array.from(document.querySelectorAll('.doc-card'));
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            cards.forEach(card => { card.style.display = !q || card.dataset.search.toLowerCase().includes(q) ? '' : 'none'; });
+        });
+    </script>
+</body>
+</html>

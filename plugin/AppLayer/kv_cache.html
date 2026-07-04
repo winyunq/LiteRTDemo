@@ -1,0 +1,118 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session & KV Cache | Winyunq Engineering</title>
+    <style>
+        body { background-color: #050506; color: #E2E8F0; font-family: 'Inter', sans-serif; line-height: 1.6; }
+        .canvas { background: #000; border: 1px solid #1E1E22; border-radius: 24px; padding: 2rem; margin: 2rem 0; box-shadow: inset 0 0 40px rgba(0,0,0,0.5); }
+        .label { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2em; color: #3B82F6; margin-bottom: 1rem; }
+        .card { background: #0F0F11; border: 1px solid #1E1E22; padding: 2rem; border-radius: 20px; margin-bottom: 3rem; }
+        b { color: #FFF; }
+        code { color: #3B82F6; font-family: 'Fira Code', monospace; font-size: 0.85em; background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; }
+        pre { background: #000; padding: 1.5rem; border-radius: 12px; border: 1px solid #1A1A1A; overflow-x: auto; font-size: 0.75rem; color: #94A3B8; margin-top: 1.5rem; }
+    </style>
+    <link rel="stylesheet" href="../assets/docs.css">
+    <script defer src="../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-8 md:p-20 max-w-5xl mx-auto">
+    <a href="../APP_LAYER.html" class="inline-flex items-center gap-2 text-zinc-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest mb-12">
+        <i data-lucide="arrow-left" class="w-3 h-3"></i> Back to Portal
+    </a>
+
+    <header class="mb-32">
+        <div class="label">Concept 02 / Persistent Memory</div>
+        <h1 class="text-6xl font-black text-white tracking-tighter italic mb-4 leading-none uppercase">Session & <span class="text-blue-600">KV CACHE</span></h1>
+        <p class="text-zinc-500 uppercase tracking-[0.5em] text-[11px] font-bold">Physical Pointer-based Session Mapping Mechanisms</p>
+    </header>
+
+    <!-- Visual Atlas -->
+    <section class="mb-32">
+        <div class="label">Physical Atlas / Memory Addressing Map</div>
+        <div class="canvas">
+            <svg viewBox="0 0 800 240" class="w-full">
+                <!-- RAM (App Side) -->
+                <rect x="50" y="40" width="250" height="160" rx="12" fill="#0A0A0A" stroke="#1E1E22" stroke-width="2"/>
+                <text x="60" y="30" fill="#444" font-size="10" font-weight="900">UE5 PROCESS SPACE (RAM)</text>
+                
+                <rect x="70" y="60" width="100" height="40" rx="4" fill="#1E3A8A40" stroke="#3B82F6"/>
+                <text x="120" y="85" text-anchor="middle" fill="#3B82F6" font-size="9">Agent_A (ptr)</text>
+                
+                <rect x="70" y="120" width="100" height="40" rx="4" fill="#111" stroke="#333"/>
+                <text x="120" y="145" text-anchor="middle" fill="#555" font-size="9">Agent_B (ptr)</text>
+
+                <!-- Mapping Arrow -->
+                <path d="M 180 80 Q 300 80 440 100" stroke="#3B82F6" stroke-dasharray="4,4" fill="none" marker-end="url(#arrow)"/>
+                <text x="310" y="70" text-anchor="middle" fill="#3B82F6" font-size="8" font-style="italic">Pointer-as-Key</text>
+
+                <!-- VRAM (Kernel Side) -->
+                <rect x="460" y="40" width="290" height="160" rx="12" fill="#0A0A0A" stroke="#1E1E22" stroke-width="2"/>
+                <text x="470" y="30" fill="#444" font-size="10" font-weight="900">GPU VRAM (KV CACHE POOL)</text>
+
+                <rect x="480" y="60" width="250" height="30" rx="4" fill="#1E3A8A20" stroke="#3B82F6"/>
+                <text x="605" y="80" text-anchor="middle" fill="#3B82F6" font-size="9">Session Slot 0 (Active Context)</text>
+                
+                <rect x="480" y="100" width="250" height="30" rx="4" fill="#111" stroke="#222"/>
+                <rect x="480" y="140" width="250" height="30" rx="4" fill="#111" stroke="#222"/>
+
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Technical Deep Dive -->
+    <section class="mb-32">
+        <div class="label">01 / Technical Depth</div>
+        <div class="card">
+            <p class="text-sm text-zinc-400">
+                <b>KV Cache</b> is the physical memory of an LLM. Reusing it means no redundant computation of history text, leading to 5x-10x faster response times.
+            </p>
+            <ul class="mt-6 space-y-4 text-xs text-zinc-500 list-none">
+                <li class="flex gap-4 p-4 bg-black/40 rounded-lg">
+                    <i data-lucide="layers" class="text-blue-500 w-5 h-5"></i>
+                    <div><b>Instant Context Switching:</b> The plugin maps Unreal object addresses (void*) directly to VRAM slots. Switching Agent latency is <b>&lt; 1ms</b>.</div>
+                </li>
+                <li class="flex gap-4 p-4 bg-black/40 rounded-lg">
+                    <i data-lucide="trash-2" class="text-blue-500 w-5 h-5"></i>
+                    <div><b>Memory Reclamation:</b> VRAM slots are finite. While the plugin implements LRU eviction, business logic must explicitly signal session release on object destruction.</div>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Code Demo -->
+    <section class="mb-32">
+        <div class="label">02 / Source Code Demo</div>
+        <div class="card">
+            <p class="text-sm text-zinc-400">Reference <code>FUmgMcpLiteRtLmAiProvider.cpp</code> for session management:</p>
+            <pre><code>// 1. Define physical session key (using self address)
+void* SessionKey = (void*)this;
+
+// 2. Core Inference Push
+FLiteRtLmUnrealApi::SendChatRequest(
+    <span class="text-blue-500">SessionKey</span>,  // Drives kernel addressing
+    Messages,    // Includes history
+    ToolsJson,
+    OnChunk, 
+    OnDone, 
+    Params
+);
+
+// 3. Physical cleanup (EndPlay)
+void Release() {
+    <span class="text-blue-500">FLiteRtLmUnrealApi::ReleaseSession(SessionKey);</span>
+}</code></pre>
+        </div>
+    </section>
+
+    <footer class="mt-40 pt-10 border-t border-zinc-900 text-center">
+        <p class="text-[10px] text-zinc-700 uppercase tracking-widest">LiteRT-LM / Winyunq Core Engineering / v2.7</p>
+    </footer>
+    </body>
+</html>

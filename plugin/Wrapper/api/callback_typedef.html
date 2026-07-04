@@ -1,0 +1,94 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRtLmCallback - LiteRT-LM API Reference</title>
+    <style>
+        body { background: #050505; color: #D1D5DB; font-family: 'Inter', sans-serif; }
+        .content-card { background: #0C0C0E; border: 1px solid #1A1A1A; border-radius: 1rem; padding: 2.5rem; margin-bottom: 2.5rem; }
+        h1 { color: #FFFFFF; font-weight: 800; letter-spacing: -0.02em; }
+        .mermaid { background: #000; padding: 1.5rem; border-radius: 1rem; border: 1px solid #111; }
+        code { font-family: 'Fira Code', monospace; color: #60A5FA; }
+        pre { background: #080808; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #111; overflow-x: auto; }
+    </style>
+    <link rel="stylesheet" href="../../assets/docs.css">
+    <script defer src="../../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-12 md:p-20">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-end gap-4 mb-6">
+            <span class="text-[10px] font-black uppercase tracking-widest text-blue-500">EN</span>
+            <a href="callback_typedef_zh.html" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-all">中文</a>
+        </div>
+
+        <a href="../index.html" class="text-gray-600 hover:text-blue-500 mb-8 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Overview
+        </a>
+
+        <header class="mb-16">
+            <h1 class="text-5xl mb-4 font-black">LiteRtLmCallback</h1>
+            <p class="text-gray-500 text-lg">Callback function prototype. Defines how the engine pushes asynchronous generation results to the host application. Implements context retention using the User Pointer pattern.</p>
+        </header>
+
+        <!-- Section 1: Passthrough Diagram -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">01. Context Passthrough Principle</h3>
+            <div class="content-card">
+                <div class="mermaid">
+                    graph TD
+                        Caller[Caller: RunInference] -->|1. Pass MyObject Pointer| DLL[Wrapper DLL Async Task]
+                        DLL -->|2. Push Result| Callback[User Callback]
+                        DLL -->|3. Return MyObject as is| Callback
+                        Callback -->|4. Cast Type| Object[Operate MyObject Instance]
+                </div>
+                <p class="text-xs text-gray-600 mt-6 italic leading-relaxed">
+                    Since the C-API cannot recognize C++ class member functions, a static function or Lambda like <code>LiteRtLmCallback</code>, combined with <code>user_ptr</code>, must be used to retrieve the C++ object context.
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 2: Prototype -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">02. Function Prototype Definition</h3>
+            <div class="content-card">
+                <pre><code class="language-c">typedef void (*LiteRtLmCallback)(LiteRtLm_Result result, void* user_ptr);</code></pre>
+                <div class="grid md:grid-cols-2 gap-6 mt-8">
+                    <div class="text-xs text-gray-500">
+                        <p class="font-bold text-white mb-2 uppercase tracking-widest">Parameter: result</p>
+                        Contains the incremental text fragments and status info for this turn. See details in <a href="struct_result.html" class="text-blue-500">LiteRtLm_Result</a>.
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        <p class="font-bold text-white mb-2 uppercase tracking-widest">Parameter: user_ptr</p>
+                        Original pointer passed by the caller in <code>RunInference</code>. Usually points to a C++ class instance (e.g., <code>this</code>).
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Usage Example -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">03. Typical C++ Class Binding Implementation</h3>
+            <div class="content-card">
+                <pre><code>// Static callback adapter
+static void OnStaticResult(LiteRtLm_Result Result, void* UserPtr) {
+    // Cast to the corresponding C++ class
+    UMyAiSubsystem* Subsystem = static_cast&lt;UMyAiSubsystem*&gt;(UserPtr);
+    if (Subsystem) {
+        Subsystem->HandleAsyncText(Result);
+    }
+}
+
+// Call site
+LiteRtLm_RunInference(Conv, Params, OnStaticResult, this); // Pass this pointer</code></pre>
+            </div>
+        </section>
+
+        <footer class="pt-12 border-t border-gray-900 text-[10px] text-gray-700 font-bold uppercase tracking-[0.5em] flex justify-between">
+            <div>LiteRT-LM Engineering Standard</div>
+            <div>© 2026 Winyunq</div>
+        </footer>
+    </div>
+    </body>
+</html>

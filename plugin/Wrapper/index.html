@@ -1,0 +1,201 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRT-LM C API and DLL Architecture | Wrapper</title>
+    <link rel="stylesheet" href="../assets/docs.css">
+    <script defer src="../assets/docs.js"></script>
+    <style>
+        .wrapper-hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.8fr);
+            gap: 1.25rem;
+            align-items: stretch;
+            padding: 1.5rem;
+            margin: 1rem auto 1.35rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-surface);
+            box-shadow: var(--doc-shadow);
+        }
+        .wrapper-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            margin-bottom: 1.25rem;
+        }
+        .wrapper-nav a,
+        .pill-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 2rem;
+            padding: 0.35rem 0.65rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 999px;
+            background: var(--doc-soft);
+            color: var(--doc-blue);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .hero-panel {
+            display: grid;
+            align-content: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-blue-soft);
+        }
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.85rem;
+        }
+        .api-card {
+            display: block;
+            padding: 1rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-surface);
+        }
+        .api-card strong {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 0.75rem;
+        }
+        .flow-step {
+            padding: 0.9rem;
+            border: 1px solid var(--doc-line);
+            border-radius: 8px;
+            background: var(--doc-soft);
+        }
+        .flow-step b {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        @media (max-width: 760px) {
+            .wrapper-hero {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page wrapper-index">
+    <main>
+        <header class="wrapper-hero">
+            <div>
+                <nav class="wrapper-nav" aria-label="Documentation navigation">
+                    <a href="../index.html">Back to manual</a>
+                    <a href="index_zh.html">中文</a>
+                    <a href="../../demo/QUICK_START.html">Quick start</a>
+                    <a href="guide.html">C++ sample</a>
+                    <a href="multimodal_whitepaper.html">Multimodal whitepaper</a>
+                </nav>
+                <p class="eyebrow">Wrapper / C ABI / DLL</p>
+                <h1>LiteRT-LM C API and DLL Architecture</h1>
+                <p>
+                    This page is the maintained map for the stable C ABI exposed by `litert_lm_wrapper.dll`. It keeps the call order, data contracts, message synchronization, inference entry points, and cleanup rules easy to find. For Blueprint-only usage, start from the Unreal plugin section in the main manual.
+                </p>
+            </div>
+            <aside class="hero-panel" aria-label="Recommended reading order">
+                <strong>Recommended order</strong>
+                <span>Confirm backend and model paths, create the Engine and Conversation, append messages, then run inference.</span>
+                <a class="pill-link" href="api/run_inference.html">Core entry: LiteRtLm_RunInference</a>
+            </aside>
+        </header>
+
+        <section id="lifecycle">
+            <p class="eyebrow">Lifecycle</p>
+            <h2>Minimal Call Chain</h2>
+            <div class="flow">
+                <div class="flow-step">
+                    <b>1. Query backends</b>
+                    <a href="api/get_backends.html">LiteRtLm_GetAvailableBackends</a>
+                </div>
+                <div class="flow-step">
+                    <b>2. Create engine</b>
+                    <a href="api/create_engine.html">LiteRtLm_CreateEngine</a>
+                </div>
+                <div class="flow-step">
+                    <b>3. Create conversation</b>
+                    <a href="api/create_conv.html">LiteRtLm_CreateConversation</a>
+                </div>
+                <div class="flow-step">
+                    <b>4. Append messages</b>
+                    <a href="api/append_user.html">AppendUserMessage</a>
+                </div>
+                <div class="flow-step">
+                    <b>5. Run inference</b>
+                    <a href="api/run_inference.html">LiteRtLm_RunInference</a>
+                </div>
+                <div class="flow-step">
+                    <b>6. Release handles</b>
+                    <a href="api/destroy_conv.html">DestroyConversation</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="structs">
+            <p class="eyebrow">Data Contract</p>
+            <h2>Structs and Callback</h2>
+            <div class="api-grid">
+                <a class="api-card" href="api/struct_config.html">
+                    <strong>LiteRtLm_Config</strong>
+                    <span>Model path, backend, device, LoRA, vision model, audio model, and other initialization fields.</span>
+                </a>
+                <a class="api-card" href="api/struct_sampling.html">
+                    <strong>LiteRtLm_SamplingParams</strong>
+                    <span>Temperature, Top-K, Top-P, seed, max tokens, and other generation controls.</span>
+                </a>
+                <a class="api-card" href="api/struct_result.html">
+                    <strong>LiteRtLm_Result</strong>
+                    <span>Synchronous result container with status, error text, and releasable output buffers.</span>
+                </a>
+                <a class="api-card" href="api/callback_typedef.html">
+                    <strong>LiteRtLmCallback</strong>
+                    <span>Streaming token, error, completion, and user context callback protocol.</span>
+                </a>
+            </div>
+        </section>
+
+        <section id="functions">
+            <p class="eyebrow">Function Index</p>
+            <h2>Function Index</h2>
+            <table>
+                <thead>
+                    <tr><th>Stage</th><th>API</th><th>Purpose</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Initialize</td><td><a href="api/create_engine.html">LiteRtLm_CreateEngine</a></td><td>Loads the model and creates an engine handle from `LiteRtLm_Config`.</td></tr>
+                    <tr><td>Initialize</td><td><a href="api/create_conv_config.html">LiteRtLm_CreateConversationWithConfig</a></td><td>Creates a Conversation with explicit configuration.</td></tr>
+                    <tr><td>Message</td><td><a href="api/append_user.html">LiteRtLm_AppendUserMessage</a></td><td>Appends a user message for the standard text or wrapped multimodal path.</td></tr>
+                    <tr><td>Message</td><td><a href="api/append_json.html">LiteRtLm_AppendMessageJson</a></td><td>Appends a chat-schema JSON message array.</td></tr>
+                    <tr><td>Message</td><td><a href="api/append_assistant.html">LiteRtLm_AppendAssistantMessage</a></td><td>Appends assistant history for context restore or tool-call results.</td></tr>
+                    <tr><td>Inference</td><td><a href="api/run_inference.html">LiteRtLm_RunInference</a></td><td>Starts generation and streams output through the registered callback.</td></tr>
+                    <tr><td>Inference</td><td><a href="api/stop_message.html">LiteRtLm_StopMessage</a></td><td>Requests cancellation for the current generation.</td></tr>
+                    <tr><td>Inference</td><td><a href="api/wait_until_done.html">LiteRtLm_WaitUntilDone</a></td><td>Waits for generation completion in synchronous flows.</td></tr>
+                    <tr><td>Cleanup</td><td><a href="api/destroy_conv.html">LiteRtLm_DestroyConversation</a></td><td>Releases a Conversation handle.</td></tr>
+                    <tr><td>Cleanup</td><td><a href="api/destroy_engine.html">LiteRtLm_DestroyEngine</a></td><td>Releases the Engine handle and underlying resources.</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="maintenance">
+            <p class="eyebrow">Maintenance</p>
+            <h2>Maintenance Checklist</h2>
+            <ul>
+                <li>When a C API is added or renamed, update this page, the main index, and the matching English and Chinese API detail pages.</li>
+                <li>When `LiteRtLm_Config` or `LiteRtLm_SamplingParams` changes, also check the Blueprint wrappers and quick-start pages.</li>
+                <li>Keep the documentation readable offline without CDN fonts, icon scripts, or remote diagram renderers.</li>
+                <li>Point runnable code to <a href="guide.html">the C++ integration sample</a> and design notes to <a href="multimodal_whitepaper.html">the multimodal whitepaper</a>.</li>
+            </ul>
+        </section>
+    </main>
+</body>
+</html>

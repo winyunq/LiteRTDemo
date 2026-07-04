@@ -1,0 +1,116 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRtLm_WaitUntilDone - LiteRT-LM API Reference</title>
+    <style>
+        body { background: #050505; color: #D1D5DB; font-family: 'Inter', sans-serif; }
+        .content-card { background: #0C0C0E; border: 1px solid #1A1A1A; border-radius: 1rem; padding: 2.5rem; margin-bottom: 2.5rem; }
+        h1 { color: #FFFFFF; font-weight: 800; letter-spacing: -0.02em; }
+        .mermaid { background: #000; padding: 1.5rem; border-radius: 1rem; border: 1px solid #111; }
+        code { font-family: 'Fira Code', monospace; color: #60A5FA; }
+        .api-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .api-table th { text-align: left; padding: 1rem; border-bottom: 2px solid #1A1A1A; color: #3B82F6; text-transform: uppercase; }
+        .api-table td { padding: 1rem; border-bottom: 1px solid #111; vertical-align: top; }
+        pre { background: #080808; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #111; overflow-x: auto; }
+        .important-box { border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.1); padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+    </style>
+    <link rel="stylesheet" href="../../assets/docs.css">
+    <script defer src="../../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-12 md:p-20">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-end gap-4 mb-6">
+            <span class="text-[10px] font-black uppercase tracking-widest text-blue-500">EN</span>
+            <a href="wait_until_done_zh.html" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-all">中文</a>
+        </div>
+
+        <a href="../index.html" class="text-gray-600 hover:text-blue-500 mb-8 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Overview
+        </a>
+
+        <header class="mb-16">
+            <h1 class="text-5xl mb-4 font-black">LiteRtLm_WaitUntilDone</h1>
+            <p class="text-gray-500 text-lg">Engine heartbeat drive interface. Blocks the current thread and pumps asynchronous computation tasks. It is the sole bridge connecting "task submission" and "result callbacks."</p>
+        </header>
+
+        <!-- Section 1: Heartbeat Diagram -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">01. Engine Crankshaft Drive Principle</h3>
+            <div class="content-card">
+                <div class="mermaid">
+                    graph TD
+                        Thread[Background Heartbeat Thread] -->|Loop Call| API[WaitUntilDone]
+                        API -->|1. Poll| GPU[GPU Command Queue]
+                        GPU -->|2. Event| API
+                        API -->|3. Trigger| Callback[LiteRtLmCallback]
+                        Callback -->|4. Resume| Thread
+                </div>
+                <div class="important-box text-xs leading-relaxed">
+                    <b>Core Design Philosophy:</b> The DLL does not forcibly create background threads; instead, it hands the "driving authority" to the host. If this function is not called in a loop, tokens produced by the GPU will accumulate in internal queues, and callbacks will never be dispatched.
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Function Definition -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">02. Parameter & Return Value Definition</h3>
+            <div class="content-card">
+                <pre><code class="language-c">int LiteRtLm_WaitUntilDone(void* engine_ptr, int timeout_sec);</code></pre>
+                <table class="api-table mt-8">
+                    <thead><tr><th class="w-1/4">Param/Return</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td><code>engine_ptr</code></td>
+                            <td>Handle to the engine instance to drive.</td>
+                        </tr>
+                        <tr>
+                            <td><code>timeout_sec</code></td>
+                            <td>Timeout for a single blocking call. Set to 0 for default timeout (typically 600 seconds).</td>
+                        </tr>
+                        <tr>
+                            <td><code>Return Value (int)</code></td>
+                            <td>
+                                <b>Status Codes:</b><br/>
+                                0: All inference tasks completed normally.<br/>
+                                1: Single block timed out, but tasks are still in progress.<br/>
+                                -1: Fatal internal engine error occurred.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 3: Usage Pattern -->
+        <section class="mb-16">
+            <h3 class="text-xs font-black text-blue-500 uppercase tracking-widest mb-6 italic">03. Typical Background Driving Loop (Worker Thread)</h3>
+            <div class="content-card">
+                <pre><code>// Runs in an independent background thread
+void UMyAiSubsystem::InferenceWorker() {
+    while (bIsRunning) {
+        // Block and wait for token production
+        int Result = LiteRtLm_WaitUntilDone(EngineHandle, 1);
+        
+        if (Result == 0) {
+            // All tasks done, sleep to save CPU
+            FPlatformProcess::Sleep(0.1f);
+        } else if (Result < 0) {
+            UE_LOG(LogTemp, Error, TEXT("Engine Heartbeat Lost!"));
+            break;
+        }
+        // Result == 1 means still generating, continue next loop
+    }
+}</code></pre>
+            </div>
+        </section>
+
+        <footer class="pt-12 border-t border-gray-900 text-[10px] text-gray-700 font-bold uppercase tracking-[0.5em] flex justify-between">
+            <div>LiteRT-LM Engineering Standard</div>
+            <div>© 2026 Winyunq</div>
+        </footer>
+    </div>
+    </body>
+</html>

@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiteRT-LM Unreal Plugin Docs</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .hub { max-width: 1120px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+        .hub-nav { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-bottom: 1rem; }
+        .hub-nav a { font-weight: 800; }
+        .search { width: 100%; min-height: 2.7rem; padding: .7rem .9rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); color: var(--doc-text); font: inherit; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .9rem; margin-top: 1rem; }
+        .doc-card { display: block; padding: 1rem; border: 1px solid var(--doc-line); border-radius: 8px; background: var(--doc-surface); box-shadow: var(--doc-shadow); }
+        .doc-card span { color: var(--doc-blue); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+        .doc-card strong { display: block; margin: .55rem 0 .2rem; color: var(--doc-text); }
+        .doc-card p { margin: 0; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="hub">
+        <nav class="hub-nav"><a href="../index.html">Back to entry</a><a href="index_zh.html">中文</a></nav>
+        <p class="eyebrow">LiteRTDemo Documentation</p>
+        <h1>Plugin Docs</h1>
+        <p>This section only covers the LiteRT-LM Unreal plugin, Wrapper, C API, application/service layers, configuration, and shipping. Demo usage lives in Demo Docs.</p>
+        <input id="docSearch" class="search" type="search" placeholder="Search / 搜索" autocomplete="off">
+        <div id="docGrid" class="grid"><a class="doc-card" data-search="architecture overview api subsystem unreal" href="api_reference.html"><span>Overview</span><strong>System Architecture</strong><p>Module relationships, call flow, and high-level structure.</p></a>
+<a class="doc-card" data-search="api layer lower structure" href="API_LAYER.html"><span>API</span><strong>API Layer</strong><p>Lower API layer responsibilities and structure.</p></a>
+<a class="doc-card" data-search="app layer messages sessions" href="APP_LAYER.html"><span>Application</span><strong>Application Layer</strong><p>Messages, sessions, streaming, and structured output.</p></a>
+<a class="doc-card" data-search="service layer resources orchestration" href="SERVICE_LAYER.html"><span>Service</span><strong>Service Layer</strong><p>Resources, orchestration, pipeline, and release.</p></a>
+<a class="doc-card" data-search="initialization config model backend" href="INITIALIZATION_CONFIG.html"><span>Config</span><strong>Initialization & Config</strong><p>Model paths, backend, and runtime parameters.</p></a>
+<a class="doc-card" data-search="shipping package release dll model" href="SHIPPING.html"><span>Release</span><strong>Packaging & Release</strong><p>DLLs, models, platform dependencies, and resource paths.</p></a>
+<a class="doc-card" data-search="dll wrapper c api engineering" href="dll_reference.html"><span>Wrapper</span><strong>DLL Reference</strong><p>LiteRT-LM DLL engineering integration and lower dependencies.</p></a>
+<a class="doc-card" data-search="wrapper c api run inference" href="Wrapper/index.html"><span>Wrapper</span><strong>Wrapper Architecture</strong><p>C API, lifecycle, structs, and inference entry points.</p></a>
+<a class="doc-card" data-search="guide integration cpp" href="Wrapper/guide.html"><span>Wrapper</span><strong>Integration Guide</strong><p>C/C++ main.cpp-style call flow.</p></a>
+<a class="doc-card" data-search="multimodal gemma image audio" href="Wrapper/multimodal_whitepaper.html"><span>Wrapper</span><strong>Multimodal Whitepaper</strong><p>Multimodal tensor allocation and thread-safety analysis.</p></a></div>
+    </main>
+    <script>
+        const input = document.getElementById('docSearch');
+        const cards = Array.from(document.querySelectorAll('.doc-card'));
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            cards.forEach(card => { card.style.display = !q || card.dataset.search.toLowerCase().includes(q) ? '' : 'none'; });
+        });
+    </script>
+</body>
+</html>

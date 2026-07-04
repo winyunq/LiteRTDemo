@@ -1,0 +1,220 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Engineering Reference | LiteRT-LM DLL</title>
+    <style>
+        :root {
+            --bg-deep: #050506;
+            --bg-card: #0D0D0F;
+            --accent-red: #F43F5E;
+            --accent-blue: #3B82F6;
+            --text-main: #F1F5F9;
+            --border: #1E1E22;
+        }
+        body { background: var(--bg-deep); color: var(--text-main); font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        .sidebar { background: var(--bg-card); border-right: 1px solid var(--border); }
+        .content-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2rem; overflow: hidden; }
+        .logic-gate { border-left: 4px solid var(--accent-red); background: rgba(244,63,94,0.03); padding: 1.5rem; margin: 2rem 0; border-radius: 0 1rem 1rem 0; }
+        .mermaid { background: #000; padding: 2rem; border-radius: 1.5rem; border: 1px solid #1A1A1D; }
+        pre { border-radius: 12px !important; border: 1px solid #222 !important; }
+        .warning-text { color: var(--accent-red); font-weight: 800; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    </style>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page flex">
+
+    <!-- Sidebar -->
+    <aside class="sidebar w-80 fixed h-full hidden lg:flex flex-col p-10 z-50">
+        <div class="mb-16">
+            <div class="text-white font-black text-2xl tracking-tighter italic flex items-center gap-2">
+                <span class="text-red-500">NATIVE</span> CORE
+            </div>
+            <div class="text-[9px] text-gray-600 font-black uppercase tracking-widest mt-2">Beyond The Code Logic</div>
+        </div>
+
+        <div class="flex gap-4 mb-8 px-3">
+            <span class="text-[10px] font-black uppercase tracking-widest text-blue-500">EN</span>
+            <a href="dll_reference_zh.html" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-all">中文</a>
+        </div>
+        
+        <nav class="space-y-10 text-xs font-bold uppercase tracking-widest text-gray-500">
+            <div>
+                <p class="text-red-500/50 mb-6 tracking-[0.2em]">01. Contract & Intent</p>
+                <div class="space-y-3 ml-2">
+                    <a href="#state-machine" class="block hover:text-white">Invocation State Machine</a>
+                    <a href="#memory-contract" class="block hover:text-white">Memory Contract & Ownership</a>
+                    <a href="#driving-heartbeat" class="block hover:text-white">Driving Heartbeat Essence</a>
+                </div>
+            </div>
+            <div>
+                <p class="text-blue-500/50 mb-6 tracking-[0.2em]">02. Physical Index</p>
+                <div class="space-y-3 ml-2 text-[10px]">
+                    <a href="#LiteRtLm_CreateEngine" class="block hover:text-white">CreateEngine</a>
+                    <a href="#LiteRtLm_RunInference" class="block hover:text-white">RunInference</a>
+                    <a href="#LiteRtLm_AppendMessage" class="block hover:text-white">Message Sync</a>
+                </div>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 lg:ml-80 p-8 md:p-16 lg:p-24">
+        <div class="max-w-5xl mx-auto">
+            
+            <header class="mb-32">
+                <h1 class="text-7xl font-black text-white mb-10 tracking-tighter italic leading-none">
+                    Beyond Code: <span class="text-red-500">DLL</span> Deep Engineering Reference
+                </h1>
+                <p class="text-2xl text-gray-500 leading-relaxed max-w-4xl font-light">
+                    If code is execution instructions, then this document is the <strong>execution contract</strong>. It defines the "unwritten rules" of the underlying core in physical timing and memory topology.
+                </p>
+            </header>
+
+            <!-- Section: State Machine -->
+            <section id="state-machine" class="mb-40">
+                <h2 class="text-4xl font-black text-white mb-10 tracking-tight flex items-center gap-4">
+                    <div class="w-2 h-10 bg-red-600 rounded-full"></div> Invocation State Machine
+                </h2>
+                <div class="content-card p-10">
+                    <div class="mermaid mb-10">
+                        stateDiagram-v2
+                            [*] --> EngineCreated: LiteRtLm_CreateEngine
+                            EngineCreated --> ConvCreated: LiteRtLm_CreateConversation
+                            ConvCreated --> Ready: AppendUserMessage
+                            Ready --> Inferencing: LiteRtLm_RunInference
+                            Inferencing --> Driving: LiteRtLm_WaitUntilDone
+                            Driving --> Ready: bIsDone = 1
+                            Inferencing --> [*]: LiteRtLm_StopMessage
+                            EngineCreated --> [*]: LiteRtLm_DestroyEngine
+                    </div>
+                    <div class="logic-gate">
+                        <p class="warning-text mb-4"><i data-lucide="zap" class="inline-block w-4 h-4"></i> Core Insight: Non-Thread Queuing</p>
+                        <p class="text-sm text-gray-400 leading-loose">
+                            The LiteRT-LM DLL <strong>does not have an automatic task queue</strong> internally. If <code>RunInference</code> is forcibly called on the same <code>Conversation</code> from another thread before the <code>WaitUntilDone</code> blocking loop has finished, it will lead to memory context overwrite or illegal access. Developers must ensure task serialization for the same session at the application layer.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Memory Contract -->
+            <section id="memory-contract" class="mb-40">
+                <h2 class="text-4xl font-black text-white mb-10 tracking-tight flex items-center gap-4">
+                    <div class="w-2 h-10 bg-blue-600 rounded-full"></div> Memory Contract & Ownership
+                </h2>
+                <div class="grid lg:grid-cols-2 gap-12">
+                    <div class="space-y-8">
+                        <div class="content-card p-8">
+                            <h4 class="text-lg font-bold text-white mb-4">VRAM: Persistent Ownership</h4>
+                            <p class="text-sm text-gray-500 leading-relaxed">
+                                KV Cache blocks allocated by <code>Engine</code> are persistent. As long as <code>DestroyConversation</code> is not called, the corresponding VRAM block will be retained forever. This is the physical foundation for achieving "zero-copy Agent switching."
+                            </p>
+                        </div>
+                        <div class="content-card p-8 border-l-4 border-l-red-500">
+                            <h4 class="text-lg font-bold text-red-500 mb-4">Pointers: Temporary Ownership</h4>
+                            <p class="text-sm text-gray-500 leading-relaxed">
+                                The <code>text_chunk</code> in callbacks is the <code>.c_str()</code> of the internal <code>std::string</code> in the DLL.
+                                <br/><br/>
+                                <span class="text-white font-bold italic">“When the callback returns, the pointer is destroyed.”</span>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mermaid">
+                        graph TD
+                            subgraph DLL[DLL Core Memory]
+                                Buffer[Buffer: Hello World]
+                            end
+                            subgraph App[External App]
+                                String[std::string MyResponse]
+                            end
+                            Buffer -- Pointer --> App
+                            Note right of Buffer: Lifecycle limited to Callback stack frame
+                            App -- Deep Copy --> String
+                            Note over String: Data persistence
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Driving Heartbeat -->
+            <section id="driving-heartbeat" class="mb-40">
+                <h2 class="text-4xl font-black text-white mb-10 tracking-tight flex items-center gap-4">
+                    <div class="w-2 h-10 bg-yellow-500 rounded-full"></div> Driving Heartbeat Essence
+                </h2>
+                <div class="content-card p-12 bg-white/[0.01]">
+                    <div class="flex flex-col lg:flex-row gap-12">
+                        <div class="flex-1 space-y-6">
+                            <h3 class="text-2xl font-bold text-white italic">WaitUntilDone is more than just waiting.</h3>
+                            <p class="text-sm text-gray-500 leading-loose">
+                                Under the WebGPU backend, instructions submitted by <code>RunInference</code> are asynchronous. If no one calls <code>WaitUntilDone</code>, the underlying event loop will remain stagnant.
+                                <br/><br/>
+                                <b>It is the "crankshaft" of the inference engine</b>: every call drives the advancement of GPU tasks, the production of Tokens, and the triggering of callback functions. This is why we recommend starting <code>while(!done) { WaitUntilDone(...) }</code> in a background thread.
+                            </p>
+                        </div>
+                        <div class="lg:w-64 flex flex-col gap-4">
+                            <div class="p-6 bg-red-500/10 rounded-2xl border border-red-500/20 text-center">
+                                <div class="text-xs text-red-500 font-black mb-1">CPU Load</div>
+                                <div class="text-2xl font-black text-white">LOW</div>
+                                <div class="text-[9px] text-gray-600 mt-2 italic">Event-driven only</div>
+                            </div>
+                            <div class="p-6 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-center">
+                                <div class="text-xs text-blue-500 font-black mb-1">Response Latency</div>
+                                <div class="text-2xl font-black text-white">&lt; 1ms</div>
+                                <div class="text-[9px] text-gray-600 mt-2 italic">Sub-millisecond callback trigger</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Full API Index -->
+            <section id="api-index" class="mb-24">
+                <h2 class="text-2xl text-white mb-10 border-b border-gray-900 pb-6 uppercase tracking-widest">Full API Contract Dictionary</h2>
+                
+                <!-- API: CreateEngine -->
+                <div id="LiteRtLm_CreateEngine" class="mb-20">
+                    <div class="flex items-center gap-4 mb-6">
+                        <code class="text-xl font-bold text-blue-400">LiteRtLm_CreateEngine</code>
+                        <span class="text-[10px] text-gray-600 font-bold border border-gray-800 px-2 py-1 rounded">O(Initial Load)</span>
+                    </div>
+                    <pre class="language-cpp"><code>DLL_EXPORT void* LiteRtLm_CreateEngine(LiteRtLm_Config config);</code></pre>
+                    <div class="mt-8 grid md:grid-cols-2 gap-8 text-xs text-gray-500 leading-loose">
+                        <div>
+                            <h5 class="text-white font-bold mb-2">Physical Behavior:</h5>
+                            <ul class="list-disc list-inside">
+                                <li>Loads <code>.bin</code> or <code>.gguf</code> weight files.</li>
+                                <li>Initializes WebGPU adapter and compiles pipeline.</li>
+                                <li><b>VRAM Allocation</b>: Pre-allocates base memory based on <code>max_num_tokens</code>.</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-red-500/5 rounded-xl border border-red-500/10 italic">
+                            <b>Engineering Trap:</b> If <code>backend</code> specifies GPU but driver version is incompatible, this function may lead to silent process crash or return a null pointer.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API: RunInference -->
+                <div id="LiteRtLm_RunInference" class="mb-20">
+                    <div class="flex items-center gap-4 mb-6">
+                        <code class="text-xl font-bold text-blue-400">LiteRtLm_RunInference</code>
+                        <span class="text-[10px] text-gray-600 font-bold border border-gray-800 px-2 py-1 rounded">Non-Blocking</span>
+                    </div>
+                    <pre class="language-cpp"><code>DLL_EXPORT void LiteRtLm_RunInference(void* conv, LiteRtLm_SamplingParams p, LiteRtLmCallback cb, void* user);</code></pre>
+                    <p class="text-xs text-gray-400 mt-6 leading-relaxed">
+                        <b>Incremental Logic:</b> This function detects the current state of <code>conv</code>. If there are new messages appended since the last inference, it will perform Prefill calculation before starting Decode.
+                    </p>
+                </div>
+            </section>
+
+            <footer class="pt-32 border-t border-gray-900 flex justify-between items-center text-[10px] text-gray-700 font-black tracking-widest uppercase">
+                <div>The Code tells how. The Doc tells why.</div>
+                <div>© 2026 Winyunq Engineering Standard</div>
+            </footer>
+
+        </div>
+    </main>
+
+    </body>
+</html>

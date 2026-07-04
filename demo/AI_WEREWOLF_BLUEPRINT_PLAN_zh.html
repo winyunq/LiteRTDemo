@@ -1,0 +1,614 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 狼人杀蓝图升级方案 | LiteRTDemo</title>
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+        .doc-markdown { max-width: 980px; margin: 1rem auto 4rem; }
+        .doc-markdown .back { display: inline-flex; margin-bottom: 1rem; font-weight: 800; }
+        .doc-list-line { padding-left: 1rem; }
+    </style>
+</head>
+<body class="doc-page">
+    <main class="doc-markdown">
+        <a class="back" href="index_zh.html">返回 Demo 文档</a>
+        <h1>LiteRTDemo AI 狼人杀蓝图升级方案</h1>
+
+<p>本文档用于把当前 LiteRTDemo 从“本地 LLM 对话演示”升级为“AI 狼人杀教学 Demo”。当前阶段先做设计和蓝图实施说明；等 UMG MCP 可用后，再按本文档中的资产清单和任务拆分去生成或编辑 Widget / 蓝图资产。</p>
+
+<h2>1. 当前项目判断</h2>
+
+<p>结论：你的记忆基本正确。当前 LiteRTDemo 是一个轻量的本地 LLM 对话场景，而不是完整游戏玩法。</p>
+
+<p>当前可复用基础如下：</p>
+
+<p>| 模块 | 现状 | 对狼人杀升级的价值 |</p>
+<p>| --- | --- | --- |</p>
+<p>| `Content/Demo.umap` | Demo 关卡 | 可以作为首个 AI 狼人杀测试关卡的起点。 |</p>
+<p>| `AWinyunqDemoGameMode` | BeginPlay 时创建 `UWinyunqMcpWrapper` 并显示聊天 UI | 可替换或派生为狼人杀专用 `BP_WW_GameMode`。 |</p>
+<p>| `ADemoTavernHUD` | 绘制 LiteRT-LM 性能监控 | 可保留为 Debug HUD，显示当前 AI、延迟、tokens/s、VRAM。 |</p>
+<p>| `UWinyunqDialogueWidget` | C++ UMG 对话组件，监听流式 chunk 和完成回调 | 可作为“聊天记录/流式输出”逻辑参考。 |</p>
+<p>| `ULiteRtLmComponent` | 可挂到 Actor 上的 AI Brain 组件 | 最适合挂在每个 AI 玩家 Actor 上，天然隔离 Session。 |</p>
+<p>| `ULiteRtLmBlueprintLibrary` | 已提供蓝图可调用的加载模型、发送请求、采样参数、释放会话等节点 | 支持蓝图优先实现，不需要先写完整 C++。 |</p>
+
+<p>插件更新状态：</p>
+
+<p class="doc-list-line">- `Plugins/LiteRT-LM-Unreal` 是 submodule。</p>
+<p class="doc-list-line">- 已执行 `git -C Plugins\LiteRT-LM-Unreal pull --ff-only`。</p>
+<p class="doc-list-line">- 插件 `master` 当前结果是 `Already up to date`。</p>
+<p class="doc-list-line">- 当前插件工作树在 `8eefbd0 Add Blueprint chat helpers and multimodal config`，主项目记录的 submodule 指针仍是 `3e3ce70`，所以主仓会继续显示 `Plugins/LiteRT-LM-Unreal` 为 modified。这是 submodule 指针差异，不是插件内部脏文件。</p>
+
+<h2>2. 目标定位</h2>
+
+<p>本 Demo 的目标不是先做商业级狼人杀，而是做一个可学习、可调试、可逐步扩展的 AI 游戏样例。</p>
+
+<p>第一版目标：</p>
+
+<p>1. 单机本地运行。</p>
+<p>2. 一名人类玩家可以作为玩家或旁观主持。</p>
+<p>3. 5 到 7 名 AI 玩家由 LiteRT-LM 驱动。</p>
+<p>4. 游戏规则由蓝图状态机强约束，AI 只返回“发言、投票、夜间行动意图”。</p>
+<p>5. UI 展示角色、天黑/天亮流程、发言记录、投票、夜间结果、胜负。</p>
+<p>6. Debug 面板展示每个 AI 的 prompt、原始输出、解析结果、延迟和 token 统计。</p>
+
+<p>非目标：</p>
+
+<p class="doc-list-line">- 第一版不做联网多人。</p>
+<p class="doc-list-line">- 第一版不让 AI 直接修改游戏状态。</p>
+<p class="doc-list-line">- 第一版不依赖 UMG MCP 编辑蓝图资产；等 MCP 可用后再自动化创建 UI。</p>
+<p class="doc-list-line">- 第一版不追求复杂扩展角色，先把核心循环跑通。</p>
+
+<h2>3. 推荐 MVP 规则</h2>
+
+<p>建议从 6 人入门局开始：</p>
+
+<p>| 人数 | 阵营与角色 |</p>
+<p>| --- | --- |</p>
+<p>| 2 狼人 | 夜间共同选择击杀目标，白天伪装发言并投票。 |</p>
+<p>| 1 预言家 | 夜间查验一名玩家阵营。 |</p>
+<p>| 1 女巫 | 夜间拥有一次解药和一次毒药；MVP 可先只做解药，再加毒药。 |</p>
+<p>| 2 平民 | 只有白天发言和投票能力。 |</p>
+
+<p>胜利条件：</p>
+
+<p class="doc-list-line">- 狼人胜利：狼人数量大于或等于好人数量，或所有神职死亡。</p>
+<p class="doc-list-line">- 好人胜利：所有狼人死亡。</p>
+
+<p>为了教学清晰，第一版建议固定座位数量和角色配置，后续再做房间配置 UI。</p>
+
+<h2>4. 核心蓝图资产清单</h2>
+
+<h3>4.1 Game Framework</h3>
+
+<p>| 资产 | 父类 | 职责 |</p>
+<p>| --- | --- | --- |</p>
+<p>| `BP_WW_GameMode` | `GameModeBase` | 创建局、加载模型、生成玩家 Agent、创建 HUD。 |</p>
+<p>| `BP_WW_GameState` | `GameStateBase` | 保存全局阶段、天数、座位列表、公开日志。 |</p>
+<p>| `BP_WW_PlayerController` | `PlayerController` | 处理人类玩家输入、相机、鼠标和 UI 输入模式。 |</p>
+<p>| `BP_WW_RoundManager` | `Actor` | 狼人杀权威规则状态机。 |</p>
+<p>| `BP_WW_AIRequestQueue` | `Actor` 或 `Object` | 串行调度所有 LiteRT-LM 请求，避免并发请求互相覆盖。 |</p>
+<p>| `BP_WW_PlayerAgent` | `Actor` | 一个座位上的玩家实体，AI 玩家挂 `LiteRtLmComponent`。 |</p>
+<p>| `BP_WW_DebugDirector` | `Actor` | 收集调试信息，开关 prompt / 原始输出显示。 |</p>
+
+<h3>4.2 Data</h3>
+
+<p>| 资产 | 类型 | 内容 |</p>
+<p>| --- | --- | --- |</p>
+<p>| `DT_WW_Roles` | DataTable | 角色名、阵营、夜间行动顺序、是否可见、UI 颜色。 |</p>
+<p>| `DT_WW_Personas` | DataTable | AI 性格：谨慎、激进、话多、话少、诈身份倾向。 |</p>
+<p>| `DT_WW_PromptTemplates` | DataTable | 不同阶段的 prompt 模板。 |</p>
+<p>| `DA_WW_RuleConfig` | PrimaryDataAsset | 玩家数量、角色配置、讨论轮数、发言字数、超时。 |</p>
+
+<h3>4.3 UI</h3>
+
+<p>| 资产 | 父类 | 职责 |</p>
+<p>| --- | --- | --- |</p>
+<p>| `WBP_WW_HUD` | `UserWidget` | 主界面容器。 |</p>
+<p>| `WBP_WW_SeatList` | `UserWidget` | 展示所有玩家座位、存活、票数、发言状态。 |</p>
+<p>| `WBP_WW_SeatCard` | `UserWidget` | 单个玩家卡片。 |</p>
+<p>| `WBP_WW_PhaseBanner` | `UserWidget` | 显示阶段、天数、倒计时。 |</p>
+<p>| `WBP_WW_ChatLog` | `UserWidget` | 公共发言、系统广播、夜间私密反馈。 |</p>
+<p>| `WBP_WW_ActionPanel` | `UserWidget` | 人类玩家的夜间行动、发言、投票按钮。 |</p>
+<p>| `WBP_WW_VotePanel` | `UserWidget` | 投票选择和确认。 |</p>
+<p>| `WBP_WW_DebugPanel` | `UserWidget` | 当前 AI 请求、prompt、输出、解析错误。 |</p>
+
+<h2>5. 枚举与结构体</h2>
+
+<p>建议先在蓝图中创建这些 Enum 和 Struct，后续所有图都围绕它们传递数据。</p>
+
+<h3>5.1 Enums</h3>
+
+<p>| 名称 | 值 |</p>
+<p>| --- | --- |</p>
+<p>| `EWWPhase` | `Boot`, `Lobby`, `AssignRoles`, `NightStart`, `NightWerewolves`, `NightSeer`, `NightWitch`, `Dawn`, `DayDiscussion`, `DayVote`, `Exile`, `CheckVictory`, `GameOver` |</p>
+<p>| `EWWRole` | `Werewolf`, `Seer`, `Witch`, `Villager` |</p>
+<p>| `EWWTeam` | `WerewolfTeam`, `GoodTeam`, `Neutral` |</p>
+<p>| `EWWAliveState` | `Alive`, `KilledAtNight`, `Exiled`, `Dead` |</p>
+<p>| `EWWMessageVisibility` | `Public`, `PrivateToPlayer`, `PrivateToWerewolves`, `DebugOnly` |</p>
+<p>| `EWWAIRequestType` | `NightAction`, `DaySpeech`, `Vote`, `MemorySummary` |</p>
+
+<h3>5.2 Structs</h3>
+
+<p>| 名称 | 字段建议 |</p>
+<p>| --- | --- |</p>
+<p>| `FWWPlayerPublicState` | `SeatId`, `DisplayName`, `AliveState`, `bIsHuman`, `LastVoteTargetSeatId`, `PublicClaims`, `SuspicionScore` |</p>
+<p>| `FWWPlayerPrivateState` | `Role`, `Team`, `KnownWerewolfSeatIds`, `SeerKnownResults`, `WitchHasAntidote`, `WitchHasPoison`, `PrivateMemory` |</p>
+<p>| `FWWChatLine` | `SpeakerSeatId`, `SpeakerName`, `Text`, `Phase`, `DayNumber`, `Visibility`, `Timestamp` |</p>
+<p>| `FWWAIDecision` | `RequestType`, `ActorSeatId`, `TargetSeatId`, `SpeechText`, `Reason`, `Confidence`, `RawText`, `bParsedOk` |</p>
+<p>| `FWWVoteRecord` | `VoterSeatId`, `TargetSeatId`, `Reason` |</p>
+<p>| `FWWNightResult` | `KilledSeatId`, `SavedSeatId`, `PoisonedSeatId`, `SeerCheckedSeatId`, `SeerResultTeam` |</p>
+<p>| `FWWPromptContext` | `SystemPrompt`, `PrivatePrompt`, `PublicStateText`, `RecentTranscriptText`, `TaskInstruction`, `OutputSchemaText` |</p>
+
+<p>原则：公开状态和私密状态必须分开。AI 的 prompt builder 只能给对应角色能知道的信息，不能把全局真相直接塞进 prompt。</p>
+
+<h2>6. LiteRT-LM 蓝图接入</h2>
+
+<h3>6.1 模型加载</h3>
+
+<p>推荐在 `BP_WW_GameMode::BeginPlay` 或未来的 `BP_WW_GameInstance` 中加载一次模型：</p>
+
+<pre><code>
+Event BeginPlay
+  -&gt; Load LiteRT-LM Model
+     ModelFileName = 当前 Content/Models 内实际模型文件名
+     bUseAutoConfig = true
+     Backend = &quot;gpu&quot;
+     MaxNumTokens = 2048 到 4096
+     bEnableStreaming = true
+</code></pre>
+
+<p>当前仓库里 `Content/Models/` 已有模型缓存文件。实际蓝图节点里优先使用 `Resolve LiteRT-LM Model Path` 检查最终路径，再调用 `Load LiteRT-LM Model`。</p>
+
+<h3>6.2 SessionOwner 规则</h3>
+
+<p>每个 AI 玩家必须使用不同的 `SessionOwner`：</p>
+
+<p class="doc-list-line">- 如果使用 `ULiteRtLmComponent`，组件内部以自身作为 session key，适合 NPC / AI 玩家。</p>
+<p class="doc-list-line">- 如果使用 `ULiteRtLmBlueprintLibrary.SendLiteRtLmJsonChat`，`SessionOwner` 传 `BP_WW_PlayerAgent` 或该 Agent 上的专用 `Object`。</p>
+
+<p>不要所有 AI 都传 `Self` 指向同一个 `GameMode`，否则多个玩家会共享同一段 KV cache，容易出现串记忆。</p>
+
+<h3>6.3 请求队列</h3>
+
+<p>本地模型推理应先按串行队列执行，保证稳定可复现：</p>
+
+<pre><code>
+BP_WW_AIRequestQueue
+  PendingRequests: Array&lt;FWWAIRequest&gt;
+  bBusy: bool
+
+EnqueueRequest(Request)
+  Add PendingRequests
+  TryStartNext
+
+TryStartNext
+  if bBusy return
+  if PendingRequests empty return
+  bBusy = true
+  CurrentRequest = PopFirst
+  BuildPrompt
+  Send LiteRT-LM Chat Request
+
+OnChunk(TextChunk)
+  Append to CurrentStreamingText
+  Broadcast Debug Update
+
+OnDone(Result)
+  Parse Result.FullText or Result.FullJson into FWWAIDecision
+  Send decision back to BP_WW_RoundManager
+  bBusy = false
+  TryStartNext
+</code></pre>
+
+<h3>6.4 采样参数</h3>
+
+<p>不同阶段使用不同采样：</p>
+
+<p>| 场景 | Temperature | MaxTokens | 说明 |</p>
+<p>| --- | --- | --- | --- |</p>
+<p>| 夜间行动 | 0.2 到 0.4 | 96 到 160 | 更稳定，减少胡乱选目标。 |</p>
+<p>| 白天发言 | 0.7 到 0.9 | 160 到 320 | 更像人，有策略和情绪。 |</p>
+<p>| 投票 | 0.3 到 0.5 | 96 到 160 | 需要理由，但结果要明确。 |</p>
+<p>| 记忆摘要 | 0.2 | 160 到 256 | 需要压缩事实，不要发挥。 |</p>
+
+<p>如果使用 `Make LiteRT-LM Sampling Params`，结构化输出时可把 `ConstraintType` 设为 `Json`。如果蓝图端 JSON 解析能力不足，建议后续补一个很薄的 Blueprint Function Library，只负责把 JSON 字符串解析为 `FWWAIDecision`，其他玩法仍放在蓝图里。</p>
+
+<h2>7. Prompt 设计</h2>
+
+<h3>7.1 Prompt 分层</h3>
+
+<p>每次请求组合以下片段：</p>
+
+<p>1. 规则身份：你正在扮演狼人杀中的某个玩家。</p>
+<p>2. 私密信息：你的角色、阵营、已知同伴、夜间查验结果、药水状态。</p>
+<p>3. 公开信息：座位、存活、公开发言、投票、死亡结果。</p>
+<p>4. 性格参数：谨慎/激进/爱诈身份/沉默/爱归票。</p>
+<p>5. 当前任务：发言、投票、夜间行动。</p>
+<p>6. 输出格式：必须按指定 JSON 返回。</p>
+
+<h3>7.2 夜间行动 Prompt 示例</h3>
+
+<pre><code>
+你是狼人杀玩家 P{SeatId}，角色是 {RoleName}。
+当前阶段：{PhaseName}，第 {DayNumber} 夜。
+
+你的私密信息：
+{PrivateInfo}
+
+当前公开信息：
+{PublicState}
+
+最近公开发言：
+{RecentTranscript}
+
+任务：
+根据你的角色执行本阶段可用行动。你只能选择仍然存活的合法目标。
+不要解释规则，不要输出多余文本。
+
+输出 JSON：
+{
+  &quot;action&quot;: &quot;kill|check|save|poison|skip&quot;,
+  &quot;targetSeatId&quot;: 0,
+  &quot;reason&quot;: &quot;一句话说明原因&quot;,
+  &quot;confidence&quot;: 0.0
+}
+</code></pre>
+
+<h3>7.3 白天发言 Prompt 示例</h3>
+
+<pre><code>
+你是狼人杀玩家 P{SeatId}，角色是 {RoleName}。
+你需要在白天公开发言。其他玩家不知道你的真实身份，除非你主动跳身份。
+
+你的目标：
+- 如果你是好人：找出狼人并说服其他人。
+- 如果你是狼人：隐藏身份，误导投票，但不要过于离谱。
+
+公开信息：
+{PublicState}
+
+你的私密记忆：
+{PrivateMemory}
+
+最近发言：
+{RecentTranscript}
+
+输出 JSON：
+{
+  &quot;speech&quot;: &quot;你要公开说出的话，第一人称，80字以内&quot;,
+  &quot;claimRole&quot;: &quot;none|seer|witch|villager&quot;,
+  &quot;accuseSeatId&quot;: 0,
+  &quot;defendSeatId&quot;: 0,
+  &quot;reason&quot;: &quot;你的真实策略说明，仅用于调试&quot;
+}
+</code></pre>
+
+<p>注意：`reason` 只进 Debug，不进入公共发言。</p>
+
+<h3>7.4 投票 Prompt 示例</h3>
+
+<pre><code>
+当前进入投票阶段。你必须从存活玩家中选择一名投票目标，不能投自己。
+
+公开信息：
+{PublicState}
+
+最近讨论：
+{RecentTranscript}
+
+你的私密目标：
+{PrivateGoal}
+
+输出 JSON：
+{
+  &quot;voteTargetSeatId&quot;: 0,
+  &quot;publicReason&quot;: &quot;公开投票理由，40字以内&quot;,
+  &quot;privateReason&quot;: &quot;真实理由，仅调试&quot;
+}
+</code></pre>
+
+<h2>8. 规则状态机</h2>
+
+<p>`BP_WW_RoundManager` 是唯一能推进阶段和修改游戏结果的对象。AI 返回的是意图，RoundManager 负责合法性校验。</p>
+
+<h3>8.1 初始化</h3>
+
+<pre><code>
+StartNewGame
+  Read DA_WW_RuleConfig
+  Spawn BP_WW_PlayerAgent x PlayerCount
+  Assign SeatId
+  Shuffle Roles
+  Assign PrivateState
+  Give werewolves KnownWerewolfSeatIds
+  Broadcast &quot;游戏开始&quot;
+  SetPhase NightStart
+</code></pre>
+
+<h3>8.2 夜间流程</h3>
+
+<pre><code>
+NightStart
+  DayNumber += 1
+  Clear NightResult
+  SetPhase NightWerewolves
+
+NightWerewolves
+  Ask all alive werewolves for kill target
+  Resolve by majority or first valid target
+  Set NightResult.KilledSeatId
+  SetPhase NightSeer
+
+NightSeer
+  Ask alive seer for check target
+  Store private result to SeerKnownResults
+  SetPhase NightWitch
+
+NightWitch
+  If witch alive and has antidote, ask save/skip
+  Later add poison decision
+  Apply final death result
+  SetPhase Dawn
+</code></pre>
+
+<h3>8.3 白天流程</h3>
+
+<pre><code>
+Dawn
+  Broadcast night death result
+  CheckVictory
+  if not over SetPhase DayDiscussion
+
+DayDiscussion
+  For each alive player in seat order:
+    if human -&gt; wait for input
+    if AI -&gt; enqueue DaySpeech
+    Append public speech to chat log
+  SetPhase DayVote
+
+DayVote
+  For each alive player:
+    collect vote
+  Count votes
+  Exile highest voted player
+  SetPhase Exile
+
+Exile
+  Reveal or hide role based on config
+  CheckVictory
+  if not over SetPhase NightStart
+</code></pre>
+
+<h3>8.4 合法性校验</h3>
+
+<p>每个 AI 决策都必须经过校验：</p>
+
+<p class="doc-list-line">- 目标是否存在。</p>
+<p class="doc-list-line">- 目标是否存活。</p>
+<p class="doc-list-line">- 是否允许选择自己。</p>
+<p class="doc-list-line">- 当前阶段是否允许此角色行动。</p>
+<p class="doc-list-line">- 女巫是否还有药。</p>
+<p class="doc-list-line">- 狼人击杀是否至少有一名狼人存活。</p>
+
+<p>非法输出处理：</p>
+
+<p>1. 尝试从文本中提取合法目标。</p>
+<p>2. 若失败，按默认策略选择随机合法目标。</p>
+<p>3. 在 Debug 面板记录 `bParsedOk = false` 和原始输出。</p>
+
+<h2>9. UI 设计</h2>
+
+<p>第一版 UI 应该偏工具化，方便学习和调试：</p>
+
+<pre><code>
+WBP_WW_HUD
+  Top: WBP_WW_PhaseBanner
+  Left: WBP_WW_SeatList
+  Center: WBP_WW_ChatLog
+  Right: WBP_WW_ActionPanel
+  Bottom: Human input / Continue button
+  Optional overlay: WBP_WW_DebugPanel
+</code></pre>
+
+<p>交互要求：</p>
+
+<p class="doc-list-line">- 白天阶段，人类玩家可输入公开发言。</p>
+<p class="doc-list-line">- 投票阶段，人类玩家从存活玩家列表中选择目标。</p>
+<p class="doc-list-line">- 夜间阶段，如果人类玩家有角色能力，只显示合法行动按钮。</p>
+<p class="doc-list-line">- AI 正在生成时，SeatCard 显示“思考中”。</p>
+<p class="doc-list-line">- 每条发言记录标记阶段和说话人。</p>
+<p class="doc-list-line">- Debug 面板可开关，不打扰普通玩法。</p>
+
+<h2>10. 蓝图实现顺序</h2>
+
+<p>建议严格按这个顺序做，避免 UI 做完后规则无法驱动。</p>
+
+<h3>M0 文档与资源整理</h3>
+
+<p class="doc-list-line">- 建立本文档。</p>
+<p class="doc-list-line">- 确认插件蓝图节点可见。</p>
+<p class="doc-list-line">- 确认模型能在当前 Demo 中加载。</p>
+
+<h3>M1 无 AI 的规则骨架</h3>
+
+<p class="doc-list-line">- 创建 `BP_WW_RoundManager`。</p>
+<p class="doc-list-line">- 创建 Enum / Struct。</p>
+<p class="doc-list-line">- 用固定假数据跑通阶段切换。</p>
+<p class="doc-list-line">- 用 Print String 或简单 Widget 显示阶段。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 点击开始后可以从夜晚走到白天、投票、放逐、胜负检查。</p>
+
+<h3>M2 玩家 Agent 与 UI</h3>
+
+<p class="doc-list-line">- 创建 `BP_WW_PlayerAgent`。</p>
+<p class="doc-list-line">- 创建 `WBP_WW_HUD`、`SeatList`、`ChatLog`、`ActionPanel`。</p>
+<p class="doc-list-line">- RoundManager 广播事件，UI 订阅刷新。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 能看到 6 个座位、角色仅自己可见、公开日志追加正常。</p>
+
+<h3>M3 AI 请求队列</h3>
+
+<p class="doc-list-line">- 创建 `BP_WW_AIRequestQueue`。</p>
+<p class="doc-list-line">- 接入 `Send LiteRT-LM Chat Request`。</p>
+<p class="doc-list-line">- 实现 OnChunk / OnDone。</p>
+<p class="doc-list-line">- 先只让 AI 输出白天发言。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- AI 玩家按座位顺序依次发言，不会并发打乱。</p>
+
+<h3>M4 夜间行动与投票</h3>
+
+<p class="doc-list-line">- 添加狼人击杀。</p>
+<p class="doc-list-line">- 添加预言家查验。</p>
+<p class="doc-list-line">- 添加女巫解药。</p>
+<p class="doc-list-line">- 添加 AI 投票。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 一局可以自动跑到胜负。</p>
+
+<h3>M5 Debug 与教学化</h3>
+
+<p class="doc-list-line">- Debug Panel 显示 prompt、raw output、parsed decision、tokens/s。</p>
+<p class="doc-list-line">- 增加“一步一步推进”按钮。</p>
+<p class="doc-list-line">- 增加“自动运行到下一阶段”按钮。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 用户能看懂 AI 每一步为什么这么做，并能定位解析失败。</p>
+
+<h3>M6 UMG MCP 自动化资产编辑</h3>
+
+<p>等 UMG MCP 可用后再做：</p>
+
+<p class="doc-list-line">- 生成/调整 `WBP_WW_HUD`。</p>
+<p class="doc-list-line">- 批量绑定控件命名。</p>
+<p class="doc-list-line">- 创建 SeatCard 变体。</p>
+<p class="doc-list-line">- 生成 Debug Panel 的可折叠视图。</p>
+<p class="doc-list-line">- 根据本文档更新蓝图节点布局。</p>
+
+<h2>11. UMG MCP 可用后的任务拆分</h2>
+
+<p>后续可以把任务按下面顺序交给 UMG MCP，而不是一次性让它做完整游戏。</p>
+
+<h3>任务 1：创建主 HUD</h3>
+
+<p>目标：</p>
+
+<p class="doc-list-line">- 创建 `WBP_WW_HUD`。</p>
+<p class="doc-list-line">- 添加 PhaseBanner、SeatList、ChatLog、ActionPanel、DebugPanel 插槽。</p>
+<p class="doc-list-line">- 只做布局和命名，不做复杂逻辑。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 所有控件有稳定命名。</p>
+<p class="doc-list-line">- 运行 PIE 后能显示空界面。</p>
+
+<h3>任务 2：创建 SeatCard</h3>
+
+<p>目标：</p>
+
+<p class="doc-list-line">- 创建 `WBP_WW_SeatCard`。</p>
+<p class="doc-list-line">- 绑定玩家名、座位号、存活状态、投票目标、AI 思考状态。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- `SeatList` 能用 6 个假玩家刷新。</p>
+
+<h3>任务 3：创建 ChatLog</h3>
+
+<p>目标：</p>
+
+<p class="doc-list-line">- 创建 `WBP_WW_ChatLog` 和 `WBP_WW_ChatLine`。</p>
+<p class="doc-list-line">- 支持系统消息、玩家发言、私密消息、Debug 消息四种样式。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- RoundManager 追加 `FWWChatLine` 后 UI 自动刷新。</p>
+
+<h3>任务 4：创建 ActionPanel</h3>
+
+<p>目标：</p>
+
+<p class="doc-list-line">- 根据 `EWWPhase` 和人类玩家角色显示合法操作。</p>
+<p class="doc-list-line">- 支持发言、投票、查验、救人、毒人、跳过。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 非法按钮不显示或不可点击。</p>
+
+<h3>任务 5：Debug Panel</h3>
+
+<p>目标：</p>
+
+<p class="doc-list-line">- 展示当前 AI 请求队列。</p>
+<p class="doc-list-line">- 展示 selected AI 的 prompt、chunk、raw result、parsed result。</p>
+
+<p>验收：</p>
+
+<p class="doc-list-line">- 解析失败时能直接定位原始输出。</p>
+
+<h2>12. 测试清单</h2>
+
+<p>基础测试：</p>
+
+<p class="doc-list-line">- 模型能加载，失败时 UI 有错误提示。</p>
+<p class="doc-list-line">- 6 名玩家生成，角色数量正确。</p>
+<p class="doc-list-line">- 狼人知道同伴，好人不知道狼人。</p>
+<p class="doc-list-line">- 预言家查验结果只给预言家。</p>
+<p class="doc-list-line">- 女巫药水使用后不会重复出现。</p>
+<p class="doc-list-line">- AI 发言进入公共日志。</p>
+<p class="doc-list-line">- AI 投票目标合法。</p>
+<p class="doc-list-line">- 放逐后玩家不再参与夜间和白天行动。</p>
+<p class="doc-list-line">- 胜利条件能结束游戏。</p>
+
+<p>稳定性测试：</p>
+
+<p class="doc-list-line">- AI 输出空文本时不会卡死。</p>
+<p class="doc-list-line">- AI 输出非法 JSON 时有 fallback。</p>
+<p class="doc-list-line">- 队列中途失败时会继续下一请求。</p>
+<p class="doc-list-line">- 重开一局时所有 AI Session 被释放。</p>
+<p class="doc-list-line">- 长局时会压缩历史，prompt 不无限增长。</p>
+
+<p>教学测试：</p>
+
+<p class="doc-list-line">- Debug Panel 能看到 prompt。</p>
+<p class="doc-list-line">- 能单步推进阶段。</p>
+<p class="doc-list-line">- 能看见每个 AI 的原始输出和解析结果。</p>
+<p class="doc-list-line">- 能解释为什么某个 AI 投票给某人。</p>
+
+<h2>13. 风险与处理策略</h2>
+
+<p>| 风险 | 处理 |</p>
+<p>| --- | --- |</p>
+<p>| 本地模型生成慢 | 串行队列加 UI 思考状态；MVP 限制发言字数和 token。 |</p>
+<p>| AI 不按格式输出 | 使用 JSON 约束；失败时 fallback；Debug 记录原始输出。 |</p>
+<p>| 蓝图 JSON 解析不方便 | 玩法保持蓝图，必要时补一个小型 JSON 解析 Function Library。 |</p>
+<p>| 多 AI 串记忆 | 每个 AI 使用独立 `SessionOwner` 或独立 `LiteRtLmComponent`。 |</p>
+<p>| prompt 泄露隐藏身份 | PromptBuilder 严格区分公开状态和私密状态。 |</p>
+<p>| 规则被 AI 幻觉带偏 | RoundManager 权威校验，AI 只返回意图。 |</p>
+<p>| 上下文越来越长 | 每天结束后生成私密 memory summary，公共日志只保留最近 N 条。 |</p>
+
+<h2>14. 下一步建议</h2>
+
+<p>下一次实际动手时，建议不要先做 UI。先创建 `BP_WW_RoundManager`、Enum、Struct 和一套 Print String 驱动的状态机。只要无 AI 规则骨架跑通，后续接 LiteRT-LM 和 UMG MCP 都会简单很多。</p>
+
+<p>推荐第一批落地任务：</p>
+
+<p>1. 新建狼人杀 Enum / Struct。</p>
+<p>2. 新建 `BP_WW_RoundManager`，用假玩家跑通阶段。</p>
+<p>3. 新建 `BP_WW_AIRequestQueue`，只接白天 AI 发言。</p>
+<p>4. 用现有 `ADemoTavernHUD` 或简单 Widget 显示调试信息。</p>
+<p>5. UMG MCP 可用后，再按第 11 节拆分生成 UI。</p>
+    </main>
+</body>
+</html>

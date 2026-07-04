@@ -1,0 +1,91 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Telemetry & Defense | Winyunq Engineering</title>
+    <style>
+        body { background-color: #050506; color: #E2E8F0; font-family: 'Inter', sans-serif; line-height: 1.6; }
+        .canvas { background: #000; border: 1px solid #1E1E22; border-radius: 24px; padding: 2rem; margin: 2rem 0; box-shadow: inset 0 0 40px rgba(0,0,0,0.5); }
+        .label { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2em; color: #3B82F6; margin-bottom: 1rem; }
+        .card { background: #0F0F11; border: 1px solid #1E1E22; padding: 2rem; border-radius: 20px; margin-bottom: 3rem; }
+        b { color: #FFF; }
+        code { color: #3B82F6; font-family: 'Fira Code', monospace; font-size: 0.85em; background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; }
+        pre { background: #000; padding: 1.5rem; border-radius: 12px; border: 1px solid #1A1A1A; overflow-x: auto; font-size: 0.75rem; color: #94A3B8; margin-top: 1.5rem; }
+    </style>
+    <link rel="stylesheet" href="../assets/docs.css">
+    <script defer src="../assets/docs.js"></script>
+    <link rel="icon" href="data:,">
+</head>
+<body class="doc-page p-8 md:p-20 max-w-4xl mx-auto">
+    <a href="../APP_LAYER.html" class="inline-flex items-center gap-2 text-zinc-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest mb-12">
+        <i data-lucide="arrow-left" class="w-3 h-3"></i> Back to Protocol Guide
+    </a>
+
+    <header class="mb-32">
+        <div class="label">Operation 05 / Hardware Defense</div>
+        <h1 class="text-6xl font-black text-white tracking-tighter italic mb-4 leading-none uppercase">Hardware <span class="text-blue-600">Telemetry</span></h1>
+        <p class="text-zinc-500 uppercase tracking-[0.5em] text-[11px] font-bold">DXGI real-time polling and system fallback discipline</p>
+    </header>
+
+    <section class="mb-32">
+        <div class="label">Sequence / Hardware telemetry polling</div>
+        <div class="canvas">
+            <pre class="mermaid">
+            sequenceDiagram
+                participant HUD as UI/HUD (Level 3)
+                participant SUB as Subsystem (Level 2)
+                participant DX as DXGI Driver (Kernel)
+
+                loop Every 1.0 second
+                    HUD->>SUB: 1. QueryAvailableVramMB()
+                    SUB->>DX: 2. Query physical budget
+                    DX-->>SUB: 3. Return actual available VRAM
+                    SUB-->>HUD: 4. Return int32 (MB)
+                    alt VRAM is safe
+                        HUD->>HUD: Show green indicator
+                    else VRAM is low
+                        HUD->>HUD: Trigger fallback or warning
+                    end
+                end
+            </pre>
+        </div>
+    </section>
+
+    <section class="mb-32">
+        <div class="label">01 / Operational actions</div>
+        <div class="card">
+            <div class="space-y-6">
+                <div>
+                    <b class="text-xs uppercase text-blue-500">Action A: Real-time sampling</b>
+                    <p class="text-[10px] text-zinc-500 mt-1">
+                        Call <code>QueryAvailableVramMB</code> from HUD or monitoring UI code. Internally, the plugin uses DXGI on Windows so the query stays lightweight and does not block the render pipeline.
+                    </p>
+                </div>
+                <div class="border-t border-zinc-900 pt-4">
+                    <b class="text-xs uppercase text-red-500">Action B: Physical fallback</b>
+                    <p class="text-[10px] text-zinc-500 mt-1">
+                        When available VRAM drops below a project-defined threshold, stop issuing new <code>LoadModel</code> calls and fall back to a smaller context or the <code>cpu</code> backend.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="mb-32">
+        <div class="label">02 / Source demo</div>
+        <div class="card">
+            <pre><code>// Standard telemetry pattern (DemoTavernHUD.cpp)
+void ADemoTavernHUD::UpdateStats() {
+    int32 Vram = <span class="text-blue-500">ULiteRtLmSubsystem::QueryAvailableVramMB();</span>
+
+    StatusText = FString::Printf(TEXT("VRAM: %d MB"), Vram);
+}</code></pre>
+        </div>
+    </section>
+
+    <footer class="mt-40 pt-10 border-t border-zinc-900 text-center">
+        <p class="text-[10px] text-zinc-700 uppercase tracking-widest">LiteRT-LM / Winyunq Core Engineering / v2.6</p>
+    </footer>
+    </body>
+</html>
