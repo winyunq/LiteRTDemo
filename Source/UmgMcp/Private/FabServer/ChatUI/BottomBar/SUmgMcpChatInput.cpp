@@ -1,6 +1,5 @@
-#include "FabServer/ChatUI/BottomBar/SUmgMcpChatInput.h"
-#include "Engine/Engine.h"
 // Copyright (c) 2025-2026 Winyunq. All rights reserved.
+#include "FabServer/ChatUI/BottomBar/SUmgMcpChatInput.h"
 #include "Internationalization/Culture.h"
 #include "Internationalization/Internationalization.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
@@ -10,9 +9,18 @@
 #include "ImageUtils.h"
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "FabServer/ChatSystem/UmgMcpActiveMessageSubsystem.h"
-#if WITH_EDITOR
-#include "Editor.h"
-#endif
+#include "Input/DragAndDrop.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+
+
+
+
+
+
+
+#include "Engine/Engine.h"
 
 namespace
 {
@@ -102,3 +110,60 @@ FReply SUmgMcpChatInput::OnInputKeyDown(const FGeometry& MyGeometry, const FKeyE
 
 	return FReply::Unhandled();
 }
+
+
+
+
+
+
+
+
+
+
+FReply SUmgMcpChatInput::OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
+{
+	TSharedPtr<FExternalDragOperation> ExternalDrag = DragDropEvent.GetOperationAs<FExternalDragOperation>();
+	if (ExternalDrag.IsValid() && ExternalDrag->HasFiles())
+	{
+		return FReply::Handled();
+	}
+	return FReply::Unhandled();
+}
+
+FReply SUmgMcpChatInput::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
+{
+	TSharedPtr<FExternalDragOperation> ExternalDrag = DragDropEvent.GetOperationAs<FExternalDragOperation>();
+	if (ExternalDrag.IsValid() && ExternalDrag->HasFiles())
+	{
+		const TArray<FString>& Files = ExternalDrag->GetFiles();
+		bool bLoadedAny = false;
+		for (const FString& FilePath : Files)
+		{
+			FString Ext = FPaths::GetExtension(FilePath).ToLower();
+			if (Ext == TEXT("png") || Ext == TEXT("jpg") || Ext == TEXT("jpeg") || Ext == TEXT("bmp") || Ext == TEXT("wav") || Ext == TEXT("mp3"))
+			{
+				TArray<uint8> FileData;
+				if (FFileHelper::LoadFileToArray(FileData, *FilePath))
+				{
+					FString Base64Str = FBase64::Encode(FileData);
+					if (GEngine)
+					{
+						if (auto* Subsystem = GEngine->GetEngineSubsystem<UUmgMcpActiveMessageSubsystem>())
+						{
+							Subsystem->AddAttachmentBase64(Base64Str);
+							bLoadedAny = true;
+						}
+					}
+				}
+			}
+		}
+		if (bLoadedAny)
+		{
+			return FReply::Handled();
+		}
+	}
+	return FReply::Unhandled();
+}
+
+
+#undef LOCTEXT_NAMESPACE

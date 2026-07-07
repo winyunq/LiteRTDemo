@@ -1,6 +1,5 @@
-#include "FabServer/ChatSystem/UmgMcpActiveMessageSubsystem.h"
-#include "Engine/Engine.h"
 // Copyright (c) 2025-2026 Winyunq. All rights reserved.
+#include "FabServer/ChatSystem/UmgMcpActiveMessageSubsystem.h"
 #include "FabServer/ChatSystem/UmgMcpSessionManagerSubsystem.h"
 #include "FabServer/Agent/UmgMcpAgent.h"
 #include "FabServer/Agent/BaseAgent/UmgMcpDefaultChatAgent.h"
@@ -8,12 +7,12 @@
 
 #include "FabServer/ChatUI/MessageInteractionHub/SUmgMcpMessageInteractionHub.h"
 #include "FabServer/ChatUI/MessageInteractionHub/Messages/SUmgMcpAgentResponseGroup.h"
-#include "FabServer/ChatUI/MessageInteractionHub/Messages/SUmgMcpUserMessageWidget.h"
 #include "FabServer/ChatUI/MessageInteractionHub/Messages/SUmgMcpSystemNotificationWidget.h"
 #include "FabServer/ChatUI/BottomBar/SUmgMcpChatSendButton.h"
 #include "FabServer/ChatUI/BottomBar/SUmgMcpChatInput.h"
 #include "FabServer/ChatUI/BottomBar/SUmgMcpAttachmentList.h"
 #include "FabServer/AIProviders/UmgMcpAiSubsystem.h"
+#include "Engine/Engine.h"
 
 #define LOCTEXT_NAMESPACE "UUmgMcpActiveMessageSubsystem"
 
@@ -46,55 +45,6 @@ void UUmgMcpActiveMessageSubsystem::SetInteractionMode(const FString& NewMode)
 	if (CurrentInteractionMode != NewMode)
 	{
 		CurrentInteractionMode = NewMode;
-
-        FString Identity;
-        FString Personality;
-        FString Specialty;
-
-        if (NewMode == TEXT("Agent"))
-        {
-            Identity = TEXT("Angie"); // sounds like Angie / An'ge (安哥)
-            Personality = TEXT("A rigorous and calm strategic coordinator. Your words are concise and authoritative, like an experienced commander. You focus on the overall logical integrity.");
-            Specialty = TEXT("Global logic and architectural suggestions, solving problems from a strategic level.");
-        }
-        else if (NewMode == TEXT("Layout"))
-        {
-            Identity = TEXT("Layla"); // sounds like Layla / Layout (莱依拉)
-            Personality = TEXT("An elegant and meticulous spatial architect. You have an almost obsessive pursuit of visual balance and hierarchy. Your suggestions always carry a sense of beauty and professionalism.");
-            Specialty = TEXT("UMG layout, hierarchy management, and responsive design.");
-        }
-        else if (NewMode == TEXT("Material"))
-        {
-            Identity = TEXT("Marcelline"); // sounds like Marcelline / Material (玛彩玲)
-            Personality = TEXT("A passionate and bold visual artist. You are full of passion for color, light, and special effects. Your language is vivid and imaginative.");
-            Specialty = TEXT("Material editing, shader logic, and dynamic visual effects.");
-        }
-        else if (NewMode == TEXT("Sequence"))
-        {
-            Identity = TEXT("Sancy"); // sounds like Sancy / Sequence (珊奎茨)
-            Personality = TEXT("A highly rhythmic director. You act quickly and pursue efficiency. You believe animation is the soul of UI, and all movements must be precise and dynamic.");
-            Specialty = TEXT("Sequencer, UI animation, and timeline control.");
-        }
-        else if (NewMode == TEXT("Widget"))
-        {
-            Identity = TEXT("Widgie"); // sounds like Widgie / Widget (崴得特)
-            Personality = TEXT("A pragmatic and reliable component engineer. You focus on every underlying detail and functional implementation. You are the most solid backup, providing grounded solutions.");
-            Specialty = TEXT("Specific widget functions, property settings, and Blueprint logic connections.");
-        }
-
-        if (!Identity.IsEmpty())
-        {
-            FString NewInstruction = FString::Printf(
-                TEXT("Your identity is: %s.\n")
-                TEXT("Personality: %s\n")
-                TEXT("Expertise: %s\n")
-                TEXT("Please maintain your personality at all times, communicate with the user in a tone that fits your identity, and provide high-quality advice and operations using your expertise."),
-                *Identity, *Personality, *Specialty
-            );
-
-            // Simplified: No persistent settings for instructions in this demo
-        }
-
 		OnInteractionModeChanged.Broadcast(CurrentInteractionMode);
 	}
 }
@@ -143,8 +93,8 @@ void UUmgMcpActiveMessageSubsystem::ReturnToUser()
 		RegisteredSendButton.Pin()->SetIsRunning(false);
 	}
 
-	UUmgMcpAiSubsystem* AiSys = GEngine->GetEngineSubsystem<UUmgMcpAiSubsystem>();
-	if (AiSys)
+	// 通知 AI 子系统中断当前推理（推理引擎立即停止 Generate 循环）
+	if (UUmgMcpAiSubsystem* AiSys = GEngine ? GEngine->GetEngineSubsystem<UUmgMcpAiSubsystem>() : nullptr)
 	{
 		AiSys->RequestCancel();
 	}
@@ -257,7 +207,8 @@ void UUmgMcpActiveMessageSubsystem::ShowActiveErrorMessage(const FString& ErrorM
                 return;
             }
 
-            TSharedPtr<FUmgMcpAgent> CurrentAgent = GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>()->GetMainAgent();
+            TSharedPtr<FUmgMcpAgent> CurrentAgent = GEngine && GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>() ?
+                                                    GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>()->GetMainAgent() : nullptr;
             if (!CurrentAgent.IsValid() || CurrentAgent != Agent)
             {
                 UE_LOG(LogFabServerFlow, Warning, TEXT("Node: Retry ignored (stale agent)."));
@@ -335,7 +286,7 @@ void UUmgMcpActiveMessageSubsystem::RequestQuestion(const FString& QuestionText,
     }
 
     // 1. 实质层：记录消息到 Session。SessionManager 会在内部确保 Agent 已同步并恢复了历史。
-    UUmgMcpSessionManagerSubsystem* SessionSubsystem = GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>();
+    UUmgMcpSessionManagerSubsystem* SessionSubsystem = GEngine ? GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>() : nullptr;
     if (SessionSubsystem)
     {
         FUmgMcpSessionMessage UserMsg;
@@ -345,11 +296,12 @@ void UUmgMcpActiveMessageSubsystem::RequestQuestion(const FString& QuestionText,
         SessionSubsystem->AddMessage(UserMsg);
     }
 
-    // 2. 为 AI 回复启动新槽位
+    // 2. 表现层：启动 UI 槽位
     StartNewChatMessage();
 
-    // 3. 调度层：直接获取默认 Agent
-    TSharedPtr<FUmgMcpAgent> ActiveAgent = GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>()->GetMainAgent();
+    // 3. 调度层：获取默认 Agent
+    TSharedPtr<FUmgMcpAgent> ActiveAgent = GEngine && GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>() ?
+                                           GEngine->GetEngineSubsystem<UUmgMcpSessionManagerSubsystem>()->GetMainAgent() : nullptr;
     if (ActiveAgent.IsValid())
     {
         const FString AgentName = ActiveAgent->Name;
@@ -359,7 +311,37 @@ void UUmgMcpActiveMessageSubsystem::RequestQuestion(const FString& QuestionText,
         
         TSharedPtr<FJsonObject> SubstanceProjection = MakeShared<FJsonObject>();
         SubstanceProjection->SetStringField(TEXT("role"), TEXT("user"));
-        SubstanceProjection->SetStringField(TEXT("content"), QuestionText);
+
+        if (InImages.Num() == 0)
+        {
+            SubstanceProjection->SetStringField(TEXT("content"), QuestionText);
+        }
+        else
+        {
+            TArray<TSharedPtr<FJsonValue>> ContentArray;
+
+            // Text part
+            TSharedPtr<FJsonObject> TextPart = MakeShared<FJsonObject>();
+            TextPart->SetStringField(TEXT("type"), TEXT("text"));
+            TextPart->SetStringField(TEXT("text"), QuestionText);
+            ContentArray.Add(MakeShared<FJsonValueObject>(TextPart));
+
+            // Image part (Base64 URL)
+            for (const FString& Base64Image : InImages)
+            {
+                TSharedPtr<FJsonObject> ImagePart = MakeShared<FJsonObject>();
+                ImagePart->SetStringField(TEXT("type"), TEXT("image_url"));
+
+                TSharedPtr<FJsonObject> ImageUrlObj = MakeShared<FJsonObject>();
+                FString FinalUrl = Base64Image.StartsWith(TEXT("data:image")) ? Base64Image :
+                                  FString::Printf(TEXT("data:image/jpeg;base64,%s"), *Base64Image);
+                ImageUrlObj->SetStringField(TEXT("url"), FinalUrl);
+
+                ImagePart->SetObjectField(TEXT("image_url"), ImageUrlObj);
+                ContentArray.Add(MakeShared<FJsonValueObject>(ImagePart));
+            }
+            SubstanceProjection->SetArrayField(TEXT("content"), ContentArray);
+        }
 
         ActiveAgent->Answer(SubstanceProjection);
     }
