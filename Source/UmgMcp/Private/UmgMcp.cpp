@@ -1,4 +1,5 @@
 #include "UmgMcp.h"
+#include "Bridge/UmgMcpBridge.h"
 #include "Engine/Engine.h"
 #if WITH_EDITOR
 #include "PropertyEditorModule.h"
@@ -41,6 +42,13 @@ void FUmgMcpModule::ShutdownModule()
     FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
 
 #if WITH_EDITOR
+    if (GEditor)
+    {
+        if (UUmgMcpBridge* Bridge = GEditor->GetEditorSubsystem<UUmgMcpBridge>())
+        {
+            Bridge->StopServer();
+        }
+    }
 #endif
     
     FUmgMcpStyle::Shutdown();
@@ -72,6 +80,15 @@ void FUmgMcpModule::Initialize()
 
     .SetIcon(FSlateIcon(FUmgMcpStyle::GetStyleSetName(), "UmgMcp.PluginIcon"));
 
+#if WITH_EDITOR
+    if (GEditor)
+    {
+        if (UUmgMcpBridge* Bridge = GEditor->GetEditorSubsystem<UUmgMcpBridge>())
+        {
+            Bridge->StartServer();
+        }
+    }
+#endif
 
 }
 

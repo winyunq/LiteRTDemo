@@ -39,7 +39,12 @@ public class UmgMcp : ModuleRules
 				"HTTP",
 				"Json",
 				"JsonUtilities",
+				"DeveloperSettings",
+				"PhysicsCore",
 				"UMG",
+				"MovieScene",
+				"MovieSceneTracks",
+				"MaterialEditor",
                 "Slate",
 				"SlateCore",
 				"LiteRTLMUnreal"
@@ -52,8 +57,16 @@ public class UmgMcp : ModuleRules
 				"Slate",
 				"SlateCore",
 				"ApplicationCore", // For ClipboardCopy
+				"EditorScriptingUtilities",
+				"EditorSubsystem",
+				"Kismet",
+				"KismetCompiler",
+				"BlueprintGraph",
 				"Projects",
 				"AssetRegistry",
+				"Settings",
+				"WorkspaceMenuStructure",
+				"MaterialEditor",
 				"ImageWrapper",
 				"Serialization"
 
@@ -68,7 +81,8 @@ public class UmgMcp : ModuleRules
 					"UnrealEd",
 					"UMGEditor",
 					"PropertyEditor",
-					"ToolMenus"
+					"ToolMenus",
+					"BlueprintEditorLibrary"
 				}
 			);
 		}
