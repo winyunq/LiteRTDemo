@@ -217,8 +217,30 @@ void FUmgMcpLiteRtLmAiProvider::Send(const TArray<TSharedPtr<FJsonObject>>& Mess
             });
 
         // ---- 5. Send via API ----
+        TArray<TSharedPtr<FJsonObject>> NormalizedMessages = FLiteRtLmUnrealApi::NormalizeMessages(Messages);
+        if (NormalizedMessages.Num() == 0)
+        {
+            FLiteRtLmResult Result;
+            Result.ErrorMsg = TEXT("LiteRT-LM request has no valid messages.");
+            Result.bIsDone = true;
+            OnDone.ExecuteIfBound(Result);
+            return;
+        }
+
+        if (ULiteRtLmSubsystem* LiteRtLm = GEngine ? GEngine->GetEngineSubsystem<ULiteRtLmSubsystem>() : nullptr)
+        {
+            LiteRtLm->PrepareActiveAgent(AgentPtr, ToolsJson);
+        }
+
+        TArray<TSharedPtr<FJsonObject>> HistoryMessages;
+        for (int32 Index = 0; Index < NormalizedMessages.Num() - 1; ++Index)
+        {
+            HistoryMessages.Add(NormalizedMessages[Index]);
+        }
+
+        FLiteRtLmUnrealApi::RestoreHistory(HistoryMessages);
         FLiteRtLmUnrealApi::SendChatRequest(
-            AgentPtr, Messages, ToolsJson, OnChunk, OnDone, Params);
+            AgentPtr, NormalizedMessages.Last(), OnChunk, OnDone, Params);
     });
 }
 
