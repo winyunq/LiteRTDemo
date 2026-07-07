@@ -6,7 +6,12 @@ public class LiteRTDemo : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "LiteRTLMUnreal", "UMG", "Slate", "SlateCore", "UmgMcp" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "LiteRTLMUnreal", "UMG", "Slate", "SlateCore" });
+
+		if (Target.bBuildEditor)
+		{
+			PublicDependencyModuleNames.Add("UmgMcp");
+		}
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 	}

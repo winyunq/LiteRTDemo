@@ -14,7 +14,7 @@
 		},
 		{
 			"Name": "UmgMcp",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}
 	],

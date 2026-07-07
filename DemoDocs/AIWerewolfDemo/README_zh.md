@@ -4,6 +4,8 @@
 
 网页版本：`DemoDocs/AIWerewolfDemo/index.html`
 
+Android 打包记录：`DemoDocs/AIWerewolfDemo/ANDROID_zh.md`
+
 ## 0. 已落地实现快照
 
 截至 2026-07-07，AI 狼人杀 Demo 已在项目资产中生成第一版 Blueprint-only 实现：
