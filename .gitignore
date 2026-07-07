@@ -26,6 +26,7 @@ Binaries/Packaged/
 # Ignore large models (exceeds GitHub 2GB limit)
 Content/Models/gemma-4-E2B-it.litertlm
 *.litertlm
+Content/Models/*_mldrift_program_cache.bin
 
 # Project specific
 !Source/

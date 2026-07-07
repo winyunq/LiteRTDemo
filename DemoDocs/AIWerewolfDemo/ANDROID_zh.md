@@ -119,6 +119,21 @@ Does LiteRT-LM Downloaded Model Exist("gemma-4-E2B-it.litertlm")
 
 下载节点支持可选 `ExpectedSha256`。如果填写 64 位十六进制 SHA-256，下载完成后会流式校验文件；校验失败会删除 `.part` 临时文件并返回错误。
 
+## 内置 E2B 模型包
+
+本项目也支持制作内置 E2B 的 Android 测试包。`Config/DefaultGame.ini` 已将 `Content/Models` 作为 `NonUFS` 目录 staged；`.gitignore` 仍然忽略 `*.litertlm`，模型文件不会提交到 Git。
+
+推荐内置包使用 APK + OBB，而不是把 2.58GB 模型塞进单个 APK：
+
+```powershell
+-ini:Engine:[/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]:bPackageDataInsideApk=False
+-ini:Engine:[/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]:bAllowLargeOBBFiles=True
+```
+
+`bAllowLargeOBBFiles` 是 UE 的大 OBB 开关：它允许 OBB 超过 2GiB，但仍受 4GiB ZIP 限制。若总内容超过 4GiB，应改用 patch/overflow OBB、分块资源或首次启动下载。
+
+Android 上 `Load LiteRT-LM Project Model` 会先尝试把内置的 `Content/Models/<ModelFileName>` 提取到 `ProjectPersistentDownloadDir/LiteRTModels/`，再把真实文件路径传给 LiteRT native wrapper。这样可以避免 wrapper 读取 UE pak/OBB 虚拟路径失败。
+
 ## UAT 命令
 
 ```powershell
