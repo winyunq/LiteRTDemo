@@ -76,6 +76,49 @@ LOAD Align 0x4000
 
 当前 APK 不打包 `Content\Models`。AI 狼人杀蓝图 Demo 可以在无模型情况下运行确定性自动测试；后续手机端真实 Gemma 推理应改为外部下载、首次启动拷贝或用户选择模型文件。
 
+## E2B 模型下载
+
+插件已提供蓝图异步下载节点：
+
+```text
+Download LiteRT-LM Model
+Download Gemma 4 E2B LiteRT-LM Model
+```
+
+专用 E2B 节点默认下载：
+
+```text
+https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm?download=true
+```
+
+下载目标：
+
+```text
+ProjectPersistentDownloadDir/LiteRTModels/gemma-4-E2B-it.litertlm
+```
+
+相关蓝图辅助节点：
+
+```text
+Resolve LiteRT-LM Downloaded Model Path
+Does LiteRT-LM Downloaded Model Exist
+Load LiteRT-LM Downloaded Model
+```
+
+`Load LiteRT-LM Project Model` 也已增加回退逻辑：当 `Content/Models/<ModelFileName>` 不存在，而持久下载目录中存在同名模型时，会自动加载下载目录中的模型。
+
+推荐蓝图流程：
+
+```text
+Does LiteRT-LM Downloaded Model Exist("gemma-4-E2B-it.litertlm")
+  true  -> Load LiteRT-LM Downloaded Model
+  false -> Download Gemma 4 E2B LiteRT-LM Model
+             OnProgress  -> 更新下载进度 UI
+             OnCompleted -> bSuccess 时 Load LiteRT-LM Downloaded Model
+```
+
+下载节点支持可选 `ExpectedSha256`。如果填写 64 位十六进制 SHA-256，下载完成后会流式校验文件；校验失败会删除 `.part` 临时文件并返回错误。
+
 ## UAT 命令
 
 ```powershell
