@@ -4,6 +4,111 @@
 
 网页版本：`DemoDocs/AIWerewolfDemo/index.html`
 
+## 0. 已落地实现快照
+
+截至 2026-07-07，AI 狼人杀 Demo 已在项目资产中生成第一版 Blueprint-only 实现：
+
+| 资产 | 类型 | 状态 |
+| --- | --- | --- |
+| `Content/AIWerewolf/BP_AIWerewolfDirector.uasset` | Actor Blueprint | 已实现开局、提示词构建、Gemma 调用入口、第一夜、白天发言、投票、第二夜、胜负检查和自动测试链。 |
+| `Content/AIWerewolf/WBP_AIWerewolfGame.uasset` | Widget Blueprint | 已创建 UMG 占位资产，写入 UI 布局约定和按钮绑定约定；受 UMG MCP socket 问题影响，视觉树稍后补。 |
+| `Content/AIWerewolf/L_AIWerewolfDemo.umap` | Demo Map | 已放置 `AI_Werewolf_Director`，运行关卡时自动执行一局确定性 AI 狼人杀烟测。 |
+
+本阶段没有新增玩法 C++。玩法状态机、阶段函数、变量、提示词和自动测试链都在蓝图资产中。编辑器自动化脚本只用于生成 `.uasset`，不属于运行时依赖。
+
+### 0.1 蓝图运行链
+
+`BP_AIWerewolfDirector::Event BeginPlay` 调用：
+
+```text
+RunAutomatedAITest
+  -> StartNewGame
+  -> BuildGemmaDecisionPrompt
+  -> RequestGemmaDecision
+  -> RunNightPhase
+  -> RunDayDiscussion
+  -> RunVotePhase
+  -> RunSecondNightPhase
+  -> CheckWinState
+```
+
+确定性测试局流程：
+
+1. 8 人局：2 狼人、1 预言家、1 女巫、4 平民。
+2. 第一夜：狼人击杀 `P04 Mira`，预言家 `P03 Kai` 查验 `P02 Lin = Werewolf`。
+3. 第一日：Kai 跳预言家，Lin 反驳，AI 生成投票倾向。
+4. 第一轮投票：`P02 Lin` 被放逐并翻出狼人。
+5. 第二夜：最后狼人 `P06 Noah` 击杀 Kai，女巫 `P05 Chen` 毒杀 Noah。
+6. 胜负检查：狼人清零，好人阵营胜利。
+
+关键蓝图变量：
+
+| 变量 | 用途 |
+| --- | --- |
+| `PlayerRosterCsv` | 固定测试局座位、名称、角色和初始存活状态。 |
+| `GameStateJson` | 当前阶段公开状态快照，便于 UI 和 prompt 查看。 |
+| `GameLog` | 当前完整对局日志。 |
+| `Prompt_GameMaster_ZH` | 中文主持/规则仲裁提示词。 |
+| `Prompt_PlayerDecision_EN` | 英文 AI 玩家 JSON-only 决策提示词。 |
+| `LastGemmaPrompt` | 最近一次发送给 Gemma 4 E2B 的提示词。 |
+| `AITranscript` | 本轮 AI 发言/模拟响应。 |
+| `Winner` | 当前胜负状态，终局为 `Villagers`。 |
+
+### 0.2 验证记录
+
+结构验证命令：
+
+```powershell
+& 'D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' `
+  'D:\UE5Project\LiteRTDemo\LiteRTDemo.uproject' `
+  -NoSplash -Unattended -NullRHI -DisablePlugins=Bridge `
+  -ExecutePythonScript='D:\UE5Project\LiteRTDemo\Saved\AIWerewolfTools\validate_ai_werewolf_demo.py'
+```
+
+验证通过项：
+
+- Director/Widget/Map 资产存在。
+- Director 蓝图可编译。
+- Widget 蓝图可编译。
+- `Gemma4E2B_Brain` LiteRT-LM 组件存在。
+- 自动测试链包含 `StartNewGame`、`RunSecondNightPhase`、`CheckWinState`。
+- `StartNewGame` 写入 `GameLog` 和 `GameStateJson`。
+- `CheckWinState` 写入 `Winner` 和终局 `GameLog`。
+- `L_AIWerewolfDemo` 中存在 `AI_Werewolf_Director`。
+
+运行验证命令：
+
+```powershell
+& 'D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' `
+  'D:\UE5Project\LiteRTDemo\LiteRTDemo.uproject' `
+  '/Game/AIWerewolf/L_AIWerewolfDemo' `
+  -game -NullRHI -NoSplash -Unattended -DisablePlugins=Bridge -ExecCmds='quit'
+```
+
+运行日志中已出现完整蓝图执行输出：
+
+```text
+AI Werewolf / AI狼人杀: new 8-player match initialized.
+Build prompt for Gemma 4 E2B: public state + private role + phase action schema.
+Gemma hook: load ModelFileName and send LastGemmaPrompt through LiteRT-LM when bUseLiteRTGemma is true.
+Night / 夜晚: wolves choose victim, seer checks one target, witch may save or poison.
+Day / 白天: living players speak using public evidence, contradictions, claims, and vote history.
+Vote / 投票: collect AI votes, exile highest vote target, append public result to GameLog.
+Night 2 / 第二夜: last wolf attacks Seer; Witch poisons the last wolf.
+Win check / 胜负: all wolves are dead. Villagers win.
+AI Werewolf automated test complete.
+```
+
+### 0.3 UMG MCP 当前阻塞
+
+当前可调用的 MCP 工具暴露了 `set_target_umg_asset`、`apply_layout`、`create_widget`、`bluecode_*` 等接口，但实际调用时返回：
+
+```text
+[WinError 1225] 远程计算机拒绝网络连接。
+```
+
+本地源码检查显示 `Source/UmgMcp` 当前主要是编辑器聊天面板和 LiteRT-LM provider，没有发现监听 `127.0.0.1:55557` 的 Unreal 端 socket/listener 实现。因此 `WBP_AIWerewolfGame` 先作为 Widget Blueprint 占位，已写入布局和按钮绑定约定；等 UMG MCP 的 Unreal 端服务可用后，再把视觉树和按钮事件补进去。
+
 ## 1. 当前项目状态
 
 当前 LiteRTDemo 可以理解为一个“本地 LLM 对话 Demo”：

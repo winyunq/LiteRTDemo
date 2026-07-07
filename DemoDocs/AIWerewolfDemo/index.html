@@ -425,6 +425,7 @@
         <span>LiteRTDemo Project Docs</span>
       </a>
       <nav class="nav" aria-label="页面导航">
+        <a href="#implemented">已实现</a>
         <a href="#scope">定位</a>
         <a href="#architecture">蓝图架构</a>
         <a href="#ai">AI 接入</a>
@@ -441,12 +442,12 @@
         <p class="eyebrow">Project Demo Document / Blueprint-first</p>
         <h1>AI 狼人杀 Demo</h1>
         <p class="lead">
-          这是 LiteRTDemo 的项目级玩法文档，不是 LiteRT-LM 插件 API 文档。目标是把当前简单对话场景升级为一个本地 LLM 驱动、蓝图优先、可调试的 AI 狼人杀教学 Demo。
+          这是 LiteRTDemo 的项目级玩法文档，不是 LiteRT-LM 插件 API 文档。当前已经生成 Blueprint-only 的 AI 狼人杀 Director、Widget 占位和 Demo Map，并通过结构验证与 headless 运行验证。
         </p>
         <div class="status-row" aria-label="项目状态">
-          <span class="pill red">项目 Demo 文档</span>
+          <span class="pill red">Blueprint Demo 已生成</span>
           <span class="pill teal">LiteRT-LM 本地推理</span>
-          <span class="pill gold">UMG MCP 后续接入</span>
+          <span class="pill gold">UMG MCP 等待修复</span>
         </div>
       </div>
       <aside class="board" aria-label="AI 狼人杀界面预览">
@@ -473,6 +474,7 @@
   <main class="wrap layout">
     <aside class="toc" aria-label="目录">
       <p class="toc-title">目录</p>
+      <a href="#implemented">已实现快照</a>
       <a href="#scope">项目定位</a>
       <a href="#mvp">MVP 规则</a>
       <a href="#architecture">蓝图架构</a>
@@ -484,6 +486,37 @@
     </aside>
 
     <div class="content">
+      <section id="implemented" class="section">
+        <h2>已实现快照</h2>
+        <p>截至 2026-07-07，项目已生成第一版 Blueprint-only AI 狼人杀 Demo；编辑器脚本只用于生成资产，不作为运行时依赖。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>资产</th><th>类型</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td><code>Content/AIWerewolf/BP_AIWerewolfDirector.uasset</code></td><td>Actor Blueprint</td><td>已实现开局、Gemma 提示词、第一夜、白天发言、投票、第二夜、胜负检查和自动测试链。</td></tr>
+              <tr><td><code>Content/AIWerewolf/WBP_AIWerewolfGame.uasset</code></td><td>Widget Blueprint</td><td>已创建占位资产，写入 UI 布局约定和按钮绑定约定；视觉树等待 UMG MCP socket 修复后补齐。</td></tr>
+              <tr><td><code>Content/AIWerewolf/L_AIWerewolfDemo.umap</code></td><td>Demo Map</td><td>已放置 <code>AI_Werewolf_Director</code>，运行关卡时自动执行一局确定性 AI 狼人杀烟测。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>蓝图运行链：</p>
+        <pre><code>RunAutomatedAITest
+  -&gt; StartNewGame
+  -&gt; BuildGemmaDecisionPrompt
+  -&gt; RequestGemmaDecision
+  -&gt; RunNightPhase
+  -&gt; RunDayDiscussion
+  -&gt; RunVotePhase
+  -&gt; RunSecondNightPhase
+  -&gt; CheckWinState</code></pre>
+        <p>Headless 运行验证已在日志中确认输出：开局、提示词构建、Gemma hook、夜晚、白天、投票、第二夜、好人胜利、自动测试完成。</p>
+        <pre><code>&amp; 'D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' `
+  'D:\UE5Project\LiteRTDemo\LiteRTDemo.uproject' `
+  '/Game/AIWerewolf/L_AIWerewolfDemo' `
+  -game -NullRHI -NoSplash -Unattended -DisablePlugins=Bridge -ExecCmds='quit'</code></pre>
+        <p>UMG MCP 当前调用 <code>set_target_umg_asset</code> 返回 <code>[WinError 1225]</code>，本项目源码内也未发现监听 <code>127.0.0.1:55557</code> 的 Unreal 端 listener；因此 UI 视觉树留作下一步修复 MCP 后完成。</p>
+      </section>
+
       <section id="scope" class="section">
         <h2>项目定位</h2>
         <p>当前 Demo 是本地 LLM 对话场景；AI 狼人杀将作为项目级玩法 Demo，文档和页面部署在 <code>DemoDocs/AIWerewolfDemo</code>。</p>
