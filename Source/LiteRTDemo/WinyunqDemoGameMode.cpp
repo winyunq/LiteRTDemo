@@ -1,5 +1,6 @@
 #include "WinyunqDemoGameMode.h"
 #include "DemoTavernHUD.h"
+#include "Async/Async.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -24,11 +25,24 @@
 #include "Kismet/GameplayStatics.h"
 #include "LiteRtLmBlueprintLibrary.h"
 #include "LiteRtLmModelDownloader.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "TimerManager.h"
 #include "WinyunqMcpWrapper.h"
 #include "Blueprint/UserWidget.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/UnrealType.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <commdlg.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
+#if PLATFORM_ANDROID
+#include "Android/AndroidJNI.h"
+#include "Android/AndroidJavaEnv.h"
+#endif
 
 namespace
 {
@@ -105,6 +119,122 @@ FLinearColor GetRuntimeAvatarColor(int32 PlayerIndex)
 
     return Colors[FMath::Clamp(PlayerIndex, 0, UE_ARRAY_COUNT(Colors) - 1)];
 }
+
+#if PLATFORM_ANDROID
+constexpr int32 AIWerewolfImportModelRequestCode = 7816;
+
+bool CopyAndroidUriToFile(JNIEnv* Env, jobject IntentData, const FString& TargetPath, FString& OutErrorMessage)
+{
+    if (!Env || !IntentData)
+    {
+        OutErrorMessage = TEXT("Android document picker did not return a file.");
+        return false;
+    }
+
+    jclass IntentClass = Env->GetObjectClass(IntentData);
+    jmethodID GetDataMethod = Env->GetMethodID(IntentClass, "getData", "()Landroid/net/Uri;");
+    jobject UriObject = Env->CallObjectMethod(IntentData, GetDataMethod);
+    if (AndroidJavaEnv::CheckJavaException() || !UriObject)
+    {
+        OutErrorMessage = TEXT("Could not read selected Android document URI.");
+        return false;
+    }
+
+    jobject ActivityObject = FJavaWrapper::GameActivityThis;
+    jclass ActivityClass = Env->GetObjectClass(ActivityObject);
+    jmethodID GetContentResolverMethod = Env->GetMethodID(ActivityClass, "getContentResolver", "()Landroid/content/ContentResolver;");
+    jobject ResolverObject = Env->CallObjectMethod(ActivityObject, GetContentResolverMethod);
+    if (AndroidJavaEnv::CheckJavaException() || !ResolverObject)
+    {
+        OutErrorMessage = TEXT("Could not access Android ContentResolver.");
+        return false;
+    }
+
+    jclass ResolverClass = Env->GetObjectClass(ResolverObject);
+    jmethodID OpenInputStreamMethod = Env->GetMethodID(ResolverClass, "openInputStream", "(Landroid/net/Uri;)Ljava/io/InputStream;");
+    jobject InputStreamObject = Env->CallObjectMethod(ResolverObject, OpenInputStreamMethod, UriObject);
+    if (AndroidJavaEnv::CheckJavaException() || !InputStreamObject)
+    {
+        OutErrorMessage = TEXT("Could not open the selected model file for reading.");
+        return false;
+    }
+
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(TargetPath), true);
+    const FString PartialPath = TargetPath + TEXT(".part");
+    IFileManager::Get().Delete(*PartialPath, false, true, true);
+
+    TUniquePtr<FArchive> Writer(IFileManager::Get().CreateFileWriter(*PartialPath));
+    if (!Writer.IsValid())
+    {
+        OutErrorMessage = FString::Printf(TEXT("Could not create target model file: %s"), *PartialPath);
+        return false;
+    }
+
+    jclass InputStreamClass = Env->GetObjectClass(InputStreamObject);
+    jmethodID ReadMethod = Env->GetMethodID(InputStreamClass, "read", "([B)I");
+    jmethodID CloseMethod = Env->GetMethodID(InputStreamClass, "close", "()V");
+
+    constexpr int32 BufferSize = 256 * 1024;
+    jbyteArray JavaBuffer = Env->NewByteArray(BufferSize);
+    TArray<int8> NativeBuffer;
+    NativeBuffer.SetNumUninitialized(BufferSize);
+
+    bool bCopySucceeded = true;
+    while (true)
+    {
+        const jint BytesRead = Env->CallIntMethod(InputStreamObject, ReadMethod, JavaBuffer);
+        if (AndroidJavaEnv::CheckJavaException())
+        {
+            OutErrorMessage = TEXT("Read failed while importing Android model file.");
+            bCopySucceeded = false;
+            break;
+        }
+
+        if (BytesRead < 0)
+        {
+            break;
+        }
+
+        if (BytesRead == 0)
+        {
+            continue;
+        }
+
+        Env->GetByteArrayRegion(JavaBuffer, 0, BytesRead, NativeBuffer.GetData());
+        Writer->Serialize(NativeBuffer.GetData(), BytesRead);
+        if (Writer->IsError())
+        {
+            OutErrorMessage = FString::Printf(TEXT("Write failed while importing model to: %s"), *PartialPath);
+            bCopySucceeded = false;
+            break;
+        }
+    }
+
+    Env->CallVoidMethod(InputStreamObject, CloseMethod);
+    AndroidJavaEnv::CheckJavaException();
+    Writer.Reset();
+
+    Env->DeleteLocalRef(JavaBuffer);
+    Env->DeleteLocalRef(InputStreamObject);
+    Env->DeleteLocalRef(ResolverObject);
+    Env->DeleteLocalRef(UriObject);
+
+    if (!bCopySucceeded)
+    {
+        IFileManager::Get().Delete(*PartialPath, false, true, true);
+        return false;
+    }
+
+    if (!IFileManager::Get().Move(*TargetPath, *PartialPath, true, true, false, true))
+    {
+        IFileManager::Get().Delete(*PartialPath, false, true, true);
+        OutErrorMessage = FString::Printf(TEXT("Could not move imported model to: %s"), *TargetPath);
+        return false;
+    }
+
+    return true;
+}
+#endif
 }
 
 AWinyunqDemoGameMode::AWinyunqDemoGameMode()
@@ -157,6 +287,11 @@ void AWinyunqDemoGameMode::BeginPlay()
             PC->SetInputMode(InputMode);
 
             BindAIWerewolfSetupButtons(MainUI);
+
+            if (FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoStart")))
+            {
+                GetWorldTimerManager().SetTimerForNextTick(this, &AWinyunqDemoGameMode::StartRuntimeWerewolfGame);
+            }
         }
     }
 }
@@ -202,13 +337,13 @@ void AWinyunqDemoGameMode::BindAIWerewolfSetupButtons(UUserWidget* Widget)
     SetSelectedPlayerCount(SelectedPlayerCount);
     SetTextBlock(TEXT("DownloadE2BText"), TEXT("Download Gemma 4 E2B / 下载模型"));
     SetTextBlock(TEXT("LoadDownloadedText"), TEXT("Load Downloaded Model / 加载已下载模型"));
-    SetTextBlock(TEXT("ImportModelText"), TEXT("Import Help / 导入说明"));
+    SetTextBlock(TEXT("ImportModelText"), TEXT("Import Model / 导入模型"));
 
     const FString MissingSummary = MissingButtons.Num() > 0
         ? FString::Printf(TEXT(" Missing: %s."), *FString::Join(MissingButtons, TEXT(", ")))
         : FString();
 
-    SetModelStatus(TEXT("Model status / 模型状态: Android flow is Download -> Load Downloaded. Import is help-only in this APK."));
+    SetModelStatus(TEXT("Model status / 模型状态: use Download, or Import Model to copy an existing .litertlm file."));
     SetDownloadProgress(TEXT("Download progress / 下载进度: idle."));
     SetGameLog(FString::Printf(
         TEXT("Setup controls bound at runtime / 设置按钮已在运行时绑定: %d buttons.%s"),
@@ -353,13 +488,334 @@ void AWinyunqDemoGameMode::LoadDownloadedModelDeferred()
         : TEXT("Gemma model load failed / Gemma 模型加载失败."));
 }
 
+FString AWinyunqDemoGameMode::GetRuntimeImportTargetPath() const
+{
+    return ULiteRtLmBlueprintLibrary::ResolveLiteRtLmDownloadedModelPath(Gemma4E2BModelFileName);
+}
+
+bool AWinyunqDemoGameMode::CopyModelFileStreaming(const FString& SourcePath, const FString& TargetPath, FString& OutErrorMessage) const
+{
+    FString NormalizedSource = FPaths::ConvertRelativePathToFull(SourcePath);
+    FString NormalizedTarget = FPaths::ConvertRelativePathToFull(TargetPath);
+    FPaths::NormalizeFilename(NormalizedSource);
+    FPaths::NormalizeFilename(NormalizedTarget);
+
+    if (NormalizedSource.Equals(NormalizedTarget, ESearchCase::IgnoreCase))
+    {
+        return IFileManager::Get().FileExists(*NormalizedTarget);
+    }
+
+    if (!IFileManager::Get().FileExists(*NormalizedSource))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Source model file does not exist: %s"), *NormalizedSource);
+        return false;
+    }
+
+    TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*NormalizedSource));
+    if (!Reader.IsValid())
+    {
+        OutErrorMessage = FString::Printf(TEXT("Could not open model file for read: %s"), *NormalizedSource);
+        return false;
+    }
+
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(NormalizedTarget), true);
+    const FString PartialPath = NormalizedTarget + TEXT(".part");
+    IFileManager::Get().Delete(*PartialPath, false, true, true);
+
+    TUniquePtr<FArchive> Writer(IFileManager::Get().CreateFileWriter(*PartialPath));
+    if (!Writer.IsValid())
+    {
+        OutErrorMessage = FString::Printf(TEXT("Could not create imported model file: %s"), *PartialPath);
+        return false;
+    }
+
+    TArray<uint8> Buffer;
+    Buffer.SetNumUninitialized(1024 * 1024);
+
+    int64 RemainingBytes = Reader->TotalSize();
+    if (RemainingBytes <= 0)
+    {
+        OutErrorMessage = FString::Printf(TEXT("Selected model file is empty: %s"), *NormalizedSource);
+        Writer.Reset();
+        Reader.Reset();
+        IFileManager::Get().Delete(*PartialPath, false, true, true);
+        return false;
+    }
+
+    while (RemainingBytes > 0)
+    {
+        const int64 ChunkSize64 = FMath::Min<int64>(RemainingBytes, Buffer.Num());
+        const int32 ChunkSize = static_cast<int32>(ChunkSize64);
+        Reader->Serialize(Buffer.GetData(), ChunkSize);
+        if (Reader->IsError())
+        {
+            OutErrorMessage = FString::Printf(TEXT("Read failed while importing model: %s"), *NormalizedSource);
+            Writer.Reset();
+            Reader.Reset();
+            IFileManager::Get().Delete(*PartialPath, false, true, true);
+            return false;
+        }
+
+        Writer->Serialize(Buffer.GetData(), ChunkSize);
+        if (Writer->IsError())
+        {
+            OutErrorMessage = FString::Printf(TEXT("Write failed while importing model: %s"), *PartialPath);
+            Writer.Reset();
+            Reader.Reset();
+            IFileManager::Get().Delete(*PartialPath, false, true, true);
+            return false;
+        }
+
+        RemainingBytes -= ChunkSize64;
+    }
+
+    Writer.Reset();
+    Reader.Reset();
+
+    if (!IFileManager::Get().Move(*NormalizedTarget, *PartialPath, true, true, false, true))
+    {
+        IFileManager::Get().Delete(*PartialPath, false, true, true);
+        OutErrorMessage = FString::Printf(TEXT("Could not move imported model to: %s"), *NormalizedTarget);
+        return false;
+    }
+
+    return true;
+}
+
+bool AWinyunqDemoGameMode::ImportModelFromPath(const FString& SourcePath, FString& OutImportedPath, FString& OutErrorMessage)
+{
+    OutImportedPath = GetRuntimeImportTargetPath();
+    OutErrorMessage.Reset();
+
+    if (SourcePath.IsEmpty())
+    {
+        OutErrorMessage = TEXT("No model file was selected.");
+        return false;
+    }
+
+    if (!FPaths::GetCleanFilename(SourcePath).EndsWith(TEXT(".litertlm"), ESearchCase::IgnoreCase))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Selected file is not a .litertlm model: %s"), *SourcePath);
+        return false;
+    }
+
+    return CopyModelFileStreaming(SourcePath, OutImportedPath, OutErrorMessage);
+}
+
+void AWinyunqDemoGameMode::FinishModelImport(bool bSuccess, const FString& ImportedPath, const FString& ErrorMessage)
+{
+    if (bSuccess)
+    {
+        SetWidgetModelReady(false);
+        SetModelStatus(FString::Printf(TEXT("Import model / 导入模型: complete. Saved to: %s"), *ImportedPath));
+        SetDownloadProgress(TEXT("Import complete / 导入完成. Loading model..."));
+        SetGameLog(TEXT("Imported model copied to LiteRT-LM downloaded-model storage. Loading it now."));
+
+        if (GetWorld())
+        {
+            GetWorldTimerManager().SetTimer(
+                DeferredLoadModelTimerHandle,
+                this,
+                &AWinyunqDemoGameMode::LoadDownloadedModelDeferred,
+                0.1f,
+                false);
+        }
+        return;
+    }
+
+    SetWidgetModelReady(false);
+    SetModelStatus(FString::Printf(TEXT("Import model / 导入模型: failed. %s"), *ErrorMessage));
+    SetDownloadProgress(TEXT("Import failed / 导入失败."));
+    SetGameLog(TEXT("Import failed. On Android, use the system document picker and select gemma-4-E2B-it.litertlm."));
+}
+
+void AWinyunqDemoGameMode::BeginModelImport()
+{
+    SetWidgetModelReady(false);
+    SetModelStatus(TEXT("Import model / 导入模型: choose an existing .litertlm model file."));
+    SetDownloadProgress(TEXT("Import progress / 导入进度: waiting for file selection..."));
+    SetGameLog(TEXT("Import button clicked. The model will be copied to LiteRT-LM downloaded-model storage."));
+
+    FString ImportedPath;
+    FString ErrorMessage;
+
+#if PLATFORM_WINDOWS
+    if (ImportModelWithWindowsFilePicker(ImportedPath, ErrorMessage))
+    {
+        FinishModelImport(true, ImportedPath, TEXT(""));
+    }
+    else
+    {
+        FinishModelImport(false, ImportedPath, ErrorMessage);
+    }
+#elif PLATFORM_ANDROID
+    if (BeginAndroidSafModelImport(ErrorMessage))
+    {
+        SetModelStatus(TEXT("Import model / 导入模型: Android document picker opened. Select gemma-4-E2B-it.litertlm."));
+        return;
+    }
+
+    if (TryImportModelFromAndroidCommonPaths(ImportedPath, ErrorMessage))
+    {
+        FinishModelImport(true, ImportedPath, TEXT(""));
+        return;
+    }
+
+    FinishModelImport(false, ImportedPath, ErrorMessage);
+#else
+    FinishModelImport(false, ImportedPath, TEXT("Model import is currently implemented for Windows and Android only."));
+#endif
+}
+
+#if PLATFORM_WINDOWS
+bool AWinyunqDemoGameMode::ImportModelWithWindowsFilePicker(FString& OutImportedPath, FString& OutErrorMessage)
+{
+    TCHAR FileNameBuffer[32768] = {};
+
+    OPENFILENAME OpenFileName;
+    FMemory::Memzero(OpenFileName);
+    OpenFileName.lStructSize = sizeof(OPENFILENAME);
+    OpenFileName.hwndOwner = nullptr;
+    OpenFileName.lpstrFilter = TEXT("LiteRT-LM Model (*.litertlm)\0*.litertlm\0All Files (*.*)\0*.*\0");
+    OpenFileName.lpstrFile = FileNameBuffer;
+    OpenFileName.nMaxFile = UE_ARRAY_COUNT(FileNameBuffer);
+    OpenFileName.lpstrTitle = TEXT("Select Gemma 4 E2B LiteRT-LM model");
+    OpenFileName.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+
+    if (!GetOpenFileName(&OpenFileName))
+    {
+        const DWORD DialogError = CommDlgExtendedError();
+        OutErrorMessage = DialogError == 0
+            ? TEXT("Import cancelled.")
+            : FString::Printf(TEXT("Windows file picker failed. Error code: %lu"), static_cast<unsigned long>(DialogError));
+        return false;
+    }
+
+    return ImportModelFromPath(FileNameBuffer, OutImportedPath, OutErrorMessage);
+}
+#endif
+
+#if PLATFORM_ANDROID
+bool AWinyunqDemoGameMode::BeginAndroidSafModelImport(FString& OutErrorMessage)
+{
+#if USE_ANDROID_JNI
+    JNIEnv* Env = AndroidJavaEnv::GetJavaEnv();
+    if (!Env || !FJavaWrapper::GameActivityThis)
+    {
+        OutErrorMessage = TEXT("Android JNI environment is not ready.");
+        return false;
+    }
+
+    if (AndroidImportActivityResultHandle.IsValid())
+    {
+        FJavaWrapper::OnActivityResultDelegate.Remove(AndroidImportActivityResultHandle);
+        AndroidImportActivityResultHandle.Reset();
+    }
+
+    TWeakObjectPtr<AWinyunqDemoGameMode> WeakThis(this);
+    AndroidImportActivityResultHandle = FJavaWrapper::OnActivityResultDelegate.AddLambda(
+        [WeakThis](JNIEnv* ResultEnv, jobject, jobject, jint RequestCode, jint ResultCode, jobject IntentData)
+        {
+            if (RequestCode != AIWerewolfImportModelRequestCode)
+            {
+                return;
+            }
+
+            if (!WeakThis.IsValid())
+            {
+                return;
+            }
+
+            FJavaWrapper::OnActivityResultDelegate.Remove(WeakThis->AndroidImportActivityResultHandle);
+            WeakThis->AndroidImportActivityResultHandle.Reset();
+
+            FString ImportedPath = WeakThis->GetRuntimeImportTargetPath();
+            FString ErrorMessage;
+            const bool bSuccess = ResultCode == -1
+                ? CopyAndroidUriToFile(ResultEnv, IntentData, ImportedPath, ErrorMessage)
+                : false;
+
+            if (!bSuccess && ErrorMessage.IsEmpty())
+            {
+                ErrorMessage = TEXT("Android model import cancelled.");
+            }
+
+            AsyncTask(ENamedThreads::GameThread, [WeakThis, bSuccess, ImportedPath, ErrorMessage]()
+            {
+                if (WeakThis.IsValid())
+                {
+                    WeakThis->FinishModelImport(bSuccess, ImportedPath, ErrorMessage);
+                }
+            });
+        });
+
+    jclass IntentClass = Env->FindClass("android/content/Intent");
+    jmethodID IntentConstructor = Env->GetMethodID(IntentClass, "<init>", "(Ljava/lang/String;)V");
+    jstring ActionOpenDocument = Env->NewStringUTF("android.intent.action.OPEN_DOCUMENT");
+    jobject IntentObject = Env->NewObject(IntentClass, IntentConstructor, ActionOpenDocument);
+
+    jmethodID AddCategoryMethod = Env->GetMethodID(IntentClass, "addCategory", "(Ljava/lang/String;)Landroid/content/Intent;");
+    jstring CategoryOpenable = Env->NewStringUTF("android.intent.category.OPENABLE");
+    Env->CallObjectMethod(IntentObject, AddCategoryMethod, CategoryOpenable);
+
+    jmethodID SetTypeMethod = Env->GetMethodID(IntentClass, "setType", "(Ljava/lang/String;)Landroid/content/Intent;");
+    jstring AnyMime = Env->NewStringUTF("*/*");
+    Env->CallObjectMethod(IntentObject, SetTypeMethod, AnyMime);
+
+    jclass ActivityClass = Env->GetObjectClass(FJavaWrapper::GameActivityThis);
+    jmethodID StartActivityForResultMethod = Env->GetMethodID(ActivityClass, "startActivityForResult", "(Landroid/content/Intent;I)V");
+    Env->CallVoidMethod(FJavaWrapper::GameActivityThis, StartActivityForResultMethod, IntentObject, AIWerewolfImportModelRequestCode);
+
+    const bool bHadException = AndroidJavaEnv::CheckJavaException();
+
+    Env->DeleteLocalRef(AnyMime);
+    Env->DeleteLocalRef(CategoryOpenable);
+    Env->DeleteLocalRef(ActionOpenDocument);
+    Env->DeleteLocalRef(IntentObject);
+    Env->DeleteLocalRef(IntentClass);
+
+    if (bHadException)
+    {
+        FJavaWrapper::OnActivityResultDelegate.Remove(AndroidImportActivityResultHandle);
+        AndroidImportActivityResultHandle.Reset();
+        OutErrorMessage = TEXT("Android document picker could not be opened.");
+        return false;
+    }
+
+    return true;
+#else
+    OutErrorMessage = TEXT("Android JNI is not enabled.");
+    return false;
+#endif
+}
+
+bool AWinyunqDemoGameMode::TryImportModelFromAndroidCommonPaths(FString& OutImportedPath, FString& OutErrorMessage)
+{
+    TArray<FString> CandidatePaths;
+    CandidatePaths.Add(TEXT("/sdcard/Download/gemma-4-E2B-it.litertlm"));
+    CandidatePaths.Add(TEXT("/sdcard/Downloads/gemma-4-E2B-it.litertlm"));
+    CandidatePaths.Add(TEXT("/storage/emulated/0/Download/gemma-4-E2B-it.litertlm"));
+    CandidatePaths.Add(TEXT("/storage/emulated/0/Downloads/gemma-4-E2B-it.litertlm"));
+
+    for (const FString& CandidatePath : CandidatePaths)
+    {
+        if (IFileManager::Get().FileExists(*CandidatePath))
+        {
+            if (ImportModelFromPath(CandidatePath, OutImportedPath, OutErrorMessage))
+            {
+                return true;
+            }
+        }
+    }
+
+    OutErrorMessage = TEXT("Android document picker failed and no model was found in /sdcard/Download/gemma-4-E2B-it.litertlm.");
+    return false;
+}
+#endif
+
 void AWinyunqDemoGameMode::HandleImportModelClicked()
 {
-    const FString DownloadedModelPath = ULiteRtLmBlueprintLibrary::ResolveLiteRtLmDownloadedModelPath(Gemma4E2BModelFileName);
-    SetModelStatus(FString::Printf(
-        TEXT("Import model / 导入模型: Android import needs a system file picker and is not enabled in this APK. Use Download. Advanced users can place the model at: %s"),
-        *DownloadedModelPath));
-    SetGameLog(TEXT("Import button clicked / 已点击导入按钮. On Android, the supported path in this build is Download then Load Downloaded Model."));
+    BeginModelImport();
 }
 
 void AWinyunqDemoGameMode::HandleStartGameClicked()
@@ -942,14 +1398,24 @@ void AWinyunqDemoGameMode::ShowRuntimeWerewolfGameUI(bool bShow)
         BuildRuntimeWerewolfGameUI();
     }
 
-    if (UWidget* SetupPanel = ActiveAIWerewolfWidget ? ActiveAIWerewolfWidget->GetWidgetFromName(TEXT("SetupPanel")) : nullptr)
+    UPanelWidget* RootPanel = Cast<UPanelWidget>(ActiveAIWerewolfWidget ? ActiveAIWerewolfWidget->GetWidgetFromName(TEXT("RootCanvas")) : nullptr);
+    if (!RootPanel && ActiveAIWerewolfWidget && ActiveAIWerewolfWidget->WidgetTree)
     {
-        SetupPanel->SetVisibility(bShow ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+        RootPanel = Cast<UPanelWidget>(ActiveAIWerewolfWidget->WidgetTree->RootWidget);
     }
 
-    if (UWidget* LogPanel = ActiveAIWerewolfWidget ? ActiveAIWerewolfWidget->GetWidgetFromName(TEXT("LogPanel")) : nullptr)
+    if (RootPanel)
     {
-        LogPanel->SetVisibility(bShow ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+        for (int32 ChildIndex = 0; ChildIndex < RootPanel->GetChildrenCount(); ++ChildIndex)
+        {
+            if (UWidget* Child = RootPanel->GetChildAt(ChildIndex))
+            {
+                if (Child != RuntimeGamePanel)
+                {
+                    Child->SetVisibility(bShow ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+                }
+            }
+        }
     }
 
     if (RuntimeGamePanel)

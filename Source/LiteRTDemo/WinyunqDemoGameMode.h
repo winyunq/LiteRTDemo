@@ -133,6 +133,7 @@ private:
     TMap<int32, int32> RuntimeVoteCounts;
 
     FTimerHandle DeferredLoadModelTimerHandle;
+    FDelegateHandle AndroidImportActivityResultHandle;
 
     void BindAIWerewolfSetupButtons(UUserWidget* Widget);
     UButton* FindButton(FName WidgetName) const;
@@ -143,6 +144,18 @@ private:
     void SetGameLog(const FString& Text);
     void SetSelectedPlayerCount(int32 Count);
     void LoadDownloadedModelDeferred();
+    void BeginModelImport();
+    bool ImportModelFromPath(const FString& SourcePath, FString& OutImportedPath, FString& OutErrorMessage);
+    bool CopyModelFileStreaming(const FString& SourcePath, const FString& TargetPath, FString& OutErrorMessage) const;
+    FString GetRuntimeImportTargetPath() const;
+    void FinishModelImport(bool bSuccess, const FString& ImportedPath, const FString& ErrorMessage);
+#if PLATFORM_WINDOWS
+    bool ImportModelWithWindowsFilePicker(FString& OutImportedPath, FString& OutErrorMessage);
+#endif
+#if PLATFORM_ANDROID
+    bool BeginAndroidSafModelImport(FString& OutErrorMessage);
+    bool TryImportModelFromAndroidCommonPaths(FString& OutImportedPath, FString& OutErrorMessage);
+#endif
     AActor* GetOrCreateAIWerewolfDirector();
     void ExecuteDirectorFunction(FName FunctionName, const FString& ActionLabel);
     void ApplySelectedPlayerCountToObject(UObject* Target) const;
