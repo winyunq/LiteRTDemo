@@ -5,6 +5,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "WinyunqDemoGameMode.generated.h"
 
+class UUserWidget;
+
 /**
  * GameMode for the LiteRT-LM Demo.
  * Automatically initializes the HUD and UI.
@@ -19,4 +21,8 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+
+private:
+    UPROPERTY()
+    TSubclassOf<UUserWidget> AIWerewolfWidgetClass;
 };
