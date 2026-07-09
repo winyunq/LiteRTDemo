@@ -27,6 +27,8 @@ Binaries/Packaged/
 Content/Models/gemma-4-E2B-it.litertlm
 *.litertlm
 Content/Models/*_mldrift_program_cache.bin
+Content/Models/*_mldrift_weight_cache.bin
+Content/Models/*.xnnpack_cache_*
 
 # Project specific
 !Source/

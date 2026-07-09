@@ -50,6 +50,12 @@ struct FAIWerewolfRuntimePlayer
     }
 };
 
+UCLASS()
+class LITERTDEMO_API UAIWerewolfRuntimeSessionOwner : public UObject
+{
+    GENERATED_BODY()
+};
+
 /**
  * GameMode for the LiteRT-LM Demo.
  * Automatically initializes the HUD and UI.
@@ -122,6 +128,7 @@ private:
 
     int32 SelectedPlayerCount = 6;
     int32 RuntimeRoundIndex = 0;
+    int32 RuntimeHumanPlayerIndex = INDEX_NONE;
     int32 RuntimeDiscussionTurnCursor = 0;
     int32 HumanVoteTarget = INDEX_NONE;
     int32 RuntimeActiveAIPlayerIndex = INDEX_NONE;
@@ -130,6 +137,7 @@ private:
     bool bRuntimeAIRequestInFlight = false;
     bool bRuntimeWaitingForHumanSpeech = false;
     bool bModelLoadInFlight = false;
+    bool bStartGameAfterModelLoad = false;
     FString RuntimeActiveAIResponse;
     TArray<FAIWerewolfRuntimePlayer> RuntimePlayers;
     TArray<int32> RuntimePendingAIPlayers;

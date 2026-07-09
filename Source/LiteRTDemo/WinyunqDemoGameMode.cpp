@@ -290,7 +290,20 @@ void AWinyunqDemoGameMode::BeginPlay()
 
             BindAIWerewolfSetupButtons(MainUI);
 
-            if (FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoStart")))
+            const bool bAutoStart = FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoStart"));
+            const bool bAutoLoadModel = FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoLoadModel"));
+            bStartGameAfterModelLoad = bAutoStart && bAutoLoadModel;
+
+            if (bAutoLoadModel)
+            {
+                GetWorldTimerManager().SetTimer(
+                    DeferredLoadModelTimerHandle,
+                    this,
+                    &AWinyunqDemoGameMode::LoadDownloadedModelDeferred,
+                    0.2f,
+                    false);
+            }
+            else if (bAutoStart)
             {
                 GetWorldTimerManager().SetTimerForNextTick(this, &AWinyunqDemoGameMode::StartRuntimeWerewolfGame);
             }
@@ -511,6 +524,11 @@ void AWinyunqDemoGameMode::LoadDownloadedModelDeferred()
             StrongThis->SetGameLog(bLoaded
                 ? TEXT("Gemma model loaded / Gemma 模型已加载.")
                 : TEXT("Gemma model load failed / Gemma 模型加载失败."));
+            if (bLoaded && StrongThis->bStartGameAfterModelLoad)
+            {
+                StrongThis->bStartGameAfterModelLoad = false;
+                StrongThis->StartRuntimeWerewolfGame();
+            }
         });
     });
 }
@@ -1468,6 +1486,7 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
     ReleaseRuntimeAISessions();
 
     RuntimeRoundIndex = 0;
+    RuntimeHumanPlayerIndex = INDEX_NONE;
     RuntimeDiscussionTurnCursor = 0;
     HumanVoteTarget = INDEX_NONE;
     RuntimeActiveAIPlayerIndex = INDEX_NONE;
@@ -1511,14 +1530,19 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
 
     for (int32 PlayerIndex = 0; PlayerIndex < ClampedPlayerCount; ++PlayerIndex)
     {
+        const bool bIsHumanPlayer = PlayerIndex == ClampedPlayerCount - 1;
         FAIWerewolfRuntimePlayer Player;
-        Player.Name = PlayerIndex == 0 ? TEXT("You / 玩家") : FString::Printf(TEXT("AI-%02d"), PlayerIndex + 1);
-        Player.Role = PlayerIndex == 0 ? TEXT("Villager") : AIRoles[PlayerIndex - 1];
+        Player.Name = bIsHumanPlayer ? TEXT("You / 玩家") : FString::Printf(TEXT("AI-%02d"), PlayerIndex + 1);
+        Player.Role = bIsHumanPlayer ? TEXT("Villager") : AIRoles[PlayerIndex];
         Player.AvatarColor = GetRuntimeAvatarColor(PlayerIndex);
         Player.bAlive = true;
-        Player.bHuman = PlayerIndex == 0;
+        Player.bHuman = bIsHumanPlayer;
+        if (bIsHumanPlayer)
+        {
+            RuntimeHumanPlayerIndex = PlayerIndex;
+        }
         RuntimePlayers.Add(Player);
-        RuntimeAISessionOwners.Add(NewObject<UObject>(this));
+        RuntimeAISessionOwners.Add(NewObject<UAIWerewolfRuntimeSessionOwner>(this));
     }
 
     if (RuntimeChatScrollBox)
@@ -1531,7 +1555,7 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
 
     AppendRuntimeChatMessage(
         TEXT("System / 系统"),
-        FString::Printf(TEXT("New game started with %d players. Your visible role is Villager. AI players keep their roles hidden until eliminated."), ClampedPlayerCount),
+        FString::Printf(TEXT("New game started with %d players. You are P%d in the last seat. Your visible role is Villager."), ClampedPlayerCount, RuntimeHumanPlayerIndex + 1),
         FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
 
     AppendRuntimeChatMessage(
@@ -1733,7 +1757,7 @@ void AWinyunqDemoGameMode::StartNextRuntimeDiscussionTurn()
     const int32 PlayerIndex = RuntimeDiscussionTurnCursor;
     RuntimeActiveAIPlayerIndex = PlayerIndex;
 
-    if (PlayerIndex == 0)
+    if (PlayerIndex == RuntimeHumanPlayerIndex)
     {
         bRuntimeWaitingForHumanSpeech = true;
         AppendRuntimeChatMessage(
@@ -1810,7 +1834,7 @@ void AWinyunqDemoGameMode::ResolveRuntimeVote()
         return;
     }
 
-    if (RuntimePlayers.IsValidIndex(0) && RuntimePlayers[0].bAlive && HumanVoteTarget == INDEX_NONE)
+    if (RuntimePlayers.IsValidIndex(RuntimeHumanPlayerIndex) && RuntimePlayers[RuntimeHumanPlayerIndex].bAlive && HumanVoteTarget == INDEX_NONE)
     {
         AppendRuntimeChatMessage(
             TEXT("System / 系统"),
@@ -1825,9 +1849,9 @@ void AWinyunqDemoGameMode::ResolveRuntimeVote()
         RuntimeVoteCounts.FindOrAdd(HumanVoteTarget)++;
     }
 
-    for (int32 PlayerIndex = 1; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
+    for (int32 PlayerIndex = 0; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
     {
-        if (RuntimePlayers[PlayerIndex].bAlive)
+        if (RuntimePlayers[PlayerIndex].bAlive && !RuntimePlayers[PlayerIndex].bHuman)
         {
             RuntimePendingAIPlayers.Add(PlayerIndex);
         }
@@ -2062,7 +2086,6 @@ FLiteRtLmConfig AWinyunqDemoGameMode::BuildRuntimeModelConfig(const FString& Mod
     Config.bEnableAudio = false;
     Config.bEnableStreaming = true;
 
-#if PLATFORM_ANDROID
     Config.Backend = TEXT("cpu");
     Config.MaxNumTokens = 1024;
     Config.NumThreads = 4;
@@ -2070,15 +2093,6 @@ FLiteRtLmConfig AWinyunqDemoGameMode::BuildRuntimeModelConfig(const FString& Mod
     Config.bOptimizeShader = false;
     Config.bShareConstantTensors = true;
     Config.bEnableHostMappedPointer = false;
-#else
-    Config.Backend = TEXT("gpu");
-    Config.MaxNumTokens = 2048;
-    Config.NumThreads = 8;
-    Config.PrefillChunkSize = 1024;
-    Config.bOptimizeShader = true;
-    Config.bShareConstantTensors = true;
-    Config.bEnableHostMappedPointer = true;
-#endif
 
     return Config;
 }
@@ -2271,7 +2285,7 @@ void AWinyunqDemoGameMode::HandleRuntimeVoteClicked(int32 PlayerIndex)
         return;
     }
 
-    if (PlayerIndex == 0)
+    if (PlayerIndex == RuntimeHumanPlayerIndex)
     {
         AppendRuntimeChatMessage(TEXT("System / 系统"), TEXT("You cannot vote for yourself."), FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
         return;
@@ -2281,7 +2295,7 @@ void AWinyunqDemoGameMode::HandleRuntimeVoteClicked(int32 PlayerIndex)
     AppendRuntimeChatMessage(
         TEXT("You / 玩家"),
         FString::Printf(TEXT("I vote for %s."), *RuntimePlayers[PlayerIndex].Name),
-        RuntimePlayers[0].AvatarColor);
+        RuntimePlayers.IsValidIndex(RuntimeHumanPlayerIndex) ? RuntimePlayers[RuntimeHumanPlayerIndex].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
     RefreshRuntimePlayers();
     RebuildRuntimeVoteButtons();
 }
@@ -2339,7 +2353,7 @@ void AWinyunqDemoGameMode::RebuildRuntimeVoteButtons()
 
     for (int32 PlayerIndex = 0; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
     {
-        if (!RuntimePlayers[PlayerIndex].bAlive || PlayerIndex == 0)
+        if (!RuntimePlayers[PlayerIndex].bAlive || RuntimePlayers[PlayerIndex].bHuman)
         {
             continue;
         }
@@ -2379,7 +2393,14 @@ void AWinyunqDemoGameMode::RefreshRuntimePlayers()
         const FAIWerewolfRuntimePlayer& Player = RuntimePlayers[PlayerIndex];
         if (RuntimePlayerAvatarTexts.IsValidIndex(PlayerIndex) && RuntimePlayerAvatarTexts[PlayerIndex])
         {
-            RuntimePlayerAvatarTexts[PlayerIndex]->SetText(FText::FromString(Player.bAlive ? FString::Printf(TEXT("P%d"), PlayerIndex + 1) : TEXT("X")));
+            FString AvatarLabel = TEXT("OUT");
+            if (Player.bAlive)
+            {
+                AvatarLabel = Player.bHuman
+                    ? TEXT("YOU")
+                    : FString::Printf(TEXT("MCP\nAI %02d"), PlayerIndex + 1);
+            }
+            RuntimePlayerAvatarTexts[PlayerIndex]->SetText(FText::FromString(AvatarLabel));
         }
         if (RuntimePlayerNameTexts.IsValidIndex(PlayerIndex) && RuntimePlayerNameTexts[PlayerIndex])
         {
@@ -2394,9 +2415,9 @@ void AWinyunqDemoGameMode::RefreshRuntimePlayers()
             FString Status = Player.bAlive ? TEXT("Alive / 存活") : TEXT("Out / 出局");
             if (Player.bAlive && PlayerIndex == RuntimeActiveAIPlayerIndex)
             {
-                Status = PlayerIndex == 0 ? TEXT("Your turn / 你的回合") : TEXT("Thinking / 思考中");
+                Status = RuntimePlayers[PlayerIndex].bHuman ? TEXT("Your turn / 你的回合") : TEXT("Thinking / 思考中");
             }
-            if (RuntimePhase == EAIWerewolfRuntimePhase::Voting && Player.bAlive && PlayerIndex != 0 && PlayerIndex != RuntimeActiveAIPlayerIndex)
+            if (RuntimePhase == EAIWerewolfRuntimePhase::Voting && Player.bAlive && !Player.bHuman && PlayerIndex != RuntimeActiveAIPlayerIndex)
             {
                 Status = PlayerIndex == HumanVoteTarget ? TEXT("Voted / 已选择") : TEXT("Tap to vote / 点击投票");
             }
@@ -2595,17 +2616,12 @@ FString AWinyunqDemoGameMode::GetRuntimeRoleDisplay(const FAIWerewolfRuntimePlay
 int32 AWinyunqDemoGameMode::ChooseRuntimeNightTarget() const
 {
     TArray<int32> Candidates;
-    for (int32 PlayerIndex = 1; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
+    for (int32 PlayerIndex = 0; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
     {
         if (RuntimePlayers[PlayerIndex].bAlive && !RuntimePlayers[PlayerIndex].IsWerewolf())
         {
             Candidates.Add(PlayerIndex);
         }
-    }
-
-    if (Candidates.Num() == 0 && RuntimePlayers.IsValidIndex(0) && RuntimePlayers[0].bAlive && !RuntimePlayers[0].IsWerewolf())
-    {
-        Candidates.Add(0);
     }
 
     return Candidates.Num() > 0 ? Candidates[FMath::RandRange(0, Candidates.Num() - 1)] : INDEX_NONE;
@@ -2666,11 +2682,11 @@ void AWinyunqDemoGameMode::HandleRuntimeSendClicked()
     RuntimePlayerInput->SetText(FText::GetEmpty());
     if (RuntimePhase != EAIWerewolfRuntimePhase::Discussion)
     {
-        AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(0) ? RuntimePlayers[0].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
+        AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(RuntimeHumanPlayerIndex) ? RuntimePlayers[RuntimeHumanPlayerIndex].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
         return;
     }
 
-    if (!bRuntimeWaitingForHumanSpeech || RuntimeActiveAIPlayerIndex != 0)
+    if (!bRuntimeWaitingForHumanSpeech || RuntimeActiveAIPlayerIndex != RuntimeHumanPlayerIndex)
     {
         AppendRuntimeChatMessage(
             TEXT("System / 系统"),
@@ -2679,7 +2695,7 @@ void AWinyunqDemoGameMode::HandleRuntimeSendClicked()
         return;
     }
 
-    AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(0) ? RuntimePlayers[0].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
+    AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(RuntimeHumanPlayerIndex) ? RuntimePlayers[RuntimeHumanPlayerIndex].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
     bRuntimeWaitingForHumanSpeech = false;
     RuntimeActiveAIPlayerIndex = INDEX_NONE;
     ++RuntimeDiscussionTurnCursor;
