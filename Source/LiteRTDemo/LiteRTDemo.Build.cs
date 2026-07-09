@@ -6,7 +6,7 @@ public class LiteRTDemo : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "LiteRTLMUnreal", "UMG", "Slate", "SlateCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Json", "LiteRTLMUnreal", "UMG", "Slate", "SlateCore" });
 
 		if (Target.Platform == UnrealTargetPlatform.Android)
 		{

@@ -122,15 +122,23 @@ private:
 
     int32 SelectedPlayerCount = 6;
     int32 RuntimeRoundIndex = 0;
+    int32 RuntimeDiscussionTurnCursor = 0;
     int32 HumanVoteTarget = INDEX_NONE;
     int32 RuntimeActiveAIPlayerIndex = INDEX_NONE;
     EAIWerewolfRuntimePhase RuntimePhase = EAIWerewolfRuntimePhase::Setup;
     EAIWerewolfRuntimeAIRequest RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
     bool bRuntimeAIRequestInFlight = false;
+    bool bRuntimeWaitingForHumanSpeech = false;
+    bool bModelLoadInFlight = false;
     FString RuntimeActiveAIResponse;
     TArray<FAIWerewolfRuntimePlayer> RuntimePlayers;
     TArray<int32> RuntimePendingAIPlayers;
     TMap<int32, int32> RuntimeVoteCounts;
+
+    UPROPERTY()
+    TArray<TObjectPtr<UObject>> RuntimeAISessionOwners;
+
+    TArray<FString> RuntimeTranscript;
 
     FTimerHandle DeferredLoadModelTimerHandle;
     FDelegateHandle AndroidImportActivityResultHandle;
@@ -164,12 +172,13 @@ private:
     void ShowRuntimeWerewolfGameUI(bool bShow);
     void StartRuntimeWerewolfGame();
     void ResetRuntimeWerewolfGame();
+    void ReleaseRuntimeAISessions();
     void ReturnToSetupUI();
     void AdvanceRuntimeWerewolfPhase();
     void RunRuntimeNightPhase();
     void CompleteRuntimeNightPhaseFromAI(const FString& AIText);
     void RunRuntimeDiscussionPhase();
-    void StartNextRuntimeDiscussionAI();
+    void StartNextRuntimeDiscussionTurn();
     void CompleteRuntimeDiscussionAI(const FString& AIText);
     void EnterRuntimeVotingPhase();
     void ResolveRuntimeVote();
@@ -178,7 +187,11 @@ private:
     void FinishRuntimeVoteResolution();
     bool EvaluateRuntimeWinCondition();
     bool StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest RequestType, int32 ActorPlayerIndex, const FString& UserPrompt);
-    FString BuildRuntimeGameStateText() const;
+    FLiteRtLmConfig BuildRuntimeModelConfig(const FString& ModelPath) const;
+    FString BuildRuntimeWerewolfToolsJson() const;
+    FString BuildRuntimeAIMessageJson(const FString& SystemPrompt, const FString& UserPrompt) const;
+    FString BuildRuntimeGameStateText(int32 PerspectivePlayerIndex) const;
+    FString BuildRuntimeRecentTranscriptText(int32 MaxLines = 12) const;
     FString BuildRuntimeNightPrompt(int32 ActorPlayerIndex) const;
     FString BuildRuntimeDiscussionPrompt(int32 ActorPlayerIndex) const;
     FString BuildRuntimeVotePrompt(int32 ActorPlayerIndex) const;

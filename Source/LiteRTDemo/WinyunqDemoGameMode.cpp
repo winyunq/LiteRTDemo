@@ -25,6 +25,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "LiteRtLmBlueprintLibrary.h"
 #include "LiteRtLmModelDownloader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "TimerManager.h"
@@ -440,52 +442,77 @@ void AWinyunqDemoGameMode::HandleLoadDownloadedClicked()
 
 void AWinyunqDemoGameMode::LoadDownloadedModelDeferred()
 {
-    const FString DownloadedModelPath = ULiteRtLmBlueprintLibrary::ResolveLiteRtLmDownloadedModelPath(Gemma4E2BModelFileName);
-    if (!ULiteRtLmBlueprintLibrary::DoesLiteRtLmDownloadedModelExist(Gemma4E2BModelFileName))
+    if (bModelLoadInFlight)
     {
-        SetWidgetModelReady(false);
-        SetModelStatus(FString::Printf(
-            TEXT("Model load / 模型加载: file not found. Use Download first. Path: %s"),
-            *DownloadedModelPath));
+        SetModelStatus(TEXT("Model load / 模型加载: already loading..."));
         return;
     }
 
-    SetModelStatus(TEXT("Model load / 模型加载: loading with GPU backend..."));
-    bool bLoaded = ULiteRtLmBlueprintLibrary::LoadLiteRtLmDownloadedModel(
-        Gemma4E2BModelFileName,
-        true,
-        TEXT("gpu"),
-        2048,
-        8,
-        false,
-        true,
-        false,
-        false,
-        true);
-
-    if (!bLoaded)
+    const FString DownloadedModelPath = ULiteRtLmBlueprintLibrary::ResolveLiteRtLmDownloadedModelPath(Gemma4E2BModelFileName);
+    FString ModelPath = DownloadedModelPath;
+    if (!ULiteRtLmBlueprintLibrary::DoesLiteRtLmDownloadedModelExist(Gemma4E2BModelFileName))
     {
-        SetModelStatus(TEXT("Model load / 模型加载: GPU load failed, retrying CPU backend..."));
-        bLoaded = ULiteRtLmBlueprintLibrary::LoadLiteRtLmDownloadedModel(
-            Gemma4E2BModelFileName,
-            true,
-            TEXT("cpu"),
-            2048,
-            4,
-            false,
-            true,
-            false,
-            false,
-            true);
+        const FString ProjectModelPath = ULiteRtLmBlueprintLibrary::ResolveLiteRtLmProjectModelPath(Gemma4E2BModelFileName);
+        if (!ProjectModelPath.IsEmpty() && IFileManager::Get().FileExists(*ProjectModelPath))
+        {
+            ModelPath = ProjectModelPath;
+        }
+        else
+        {
+            SetWidgetModelReady(false);
+            SetModelStatus(FString::Printf(
+                TEXT("Model load / 模型加载: file not found. Use Download or Import first. Path: %s"),
+                *DownloadedModelPath));
+            return;
+        }
     }
 
-    SetWidgetModelReady(bLoaded);
-    SetModelStatus(bLoaded
-        ? TEXT("Model load / 模型加载: ready. You can start the game.")
-        : TEXT("Model load / 模型加载: failed. Check Android logcat for LiteRT-LM details."));
-    SetGameLog(bLoaded
-        ? TEXT("Gemma model loaded / Gemma 模型已加载.")
-        : TEXT("Gemma model load failed / Gemma 模型加载失败."));
+    const FLiteRtLmConfig InitialConfig = BuildRuntimeModelConfig(ModelPath);
+    SetWidgetModelReady(false);
+    bModelLoadInFlight = true;
+    SetModelStatus(FString::Printf(
+        TEXT("Model load / 模型加载: loading asynchronously with %s backend..."),
+        *InitialConfig.Backend));
+    SetGameLog(FString::Printf(TEXT("Loading LiteRT-LM model from: %s"), *ModelPath));
+
+    TWeakObjectPtr<AWinyunqDemoGameMode> WeakThis(this);
+    AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis, InitialConfig]()
+    {
+        FLiteRtLmConfig Config = InitialConfig;
+        FString UsedBackend = Config.Backend;
+        bool bLoaded = ULiteRtLmBlueprintLibrary::LoadLiteRtLmModel(Config);
+
+#if !PLATFORM_ANDROID
+        if (!bLoaded && !Config.Backend.Equals(TEXT("cpu"), ESearchCase::IgnoreCase))
+        {
+            Config.Backend = TEXT("cpu");
+            Config.NumThreads = 4;
+            Config.MaxNumTokens = FMath::Min(Config.MaxNumTokens, 1024);
+            Config.PrefillChunkSize = FMath::Min(Config.PrefillChunkSize, 512);
+            Config.bOptimizeShader = false;
+            UsedBackend = Config.Backend;
+            bLoaded = ULiteRtLmBlueprintLibrary::LoadLiteRtLmModel(Config);
+        }
+#endif
+
+        AsyncTask(ENamedThreads::GameThread, [WeakThis, bLoaded, UsedBackend]()
+        {
+            if (!WeakThis.IsValid())
+            {
+                return;
+            }
+
+            AWinyunqDemoGameMode* StrongThis = WeakThis.Get();
+            StrongThis->bModelLoadInFlight = false;
+            StrongThis->SetWidgetModelReady(bLoaded);
+            StrongThis->SetModelStatus(bLoaded
+                ? FString::Printf(TEXT("Model load / 模型加载: ready on %s backend. You can start the game."), *UsedBackend)
+                : TEXT("Model load / 模型加载: failed. Check Android logcat for LiteRT-LM details."));
+            StrongThis->SetGameLog(bLoaded
+                ? TEXT("Gemma model loaded / Gemma 模型已加载.")
+                : TEXT("Gemma model load failed / Gemma 模型加载失败."));
+        });
+    });
 }
 
 FString AWinyunqDemoGameMode::GetRuntimeImportTargetPath() const
@@ -608,9 +635,13 @@ void AWinyunqDemoGameMode::FinishModelImport(bool bSuccess, const FString& Impor
     {
         SetWidgetModelReady(false);
         SetModelStatus(FString::Printf(TEXT("Import model / 导入模型: complete. Saved to: %s"), *ImportedPath));
-        SetDownloadProgress(TEXT("Import complete / 导入完成. Loading model..."));
-        SetGameLog(TEXT("Imported model copied to LiteRT-LM downloaded-model storage. Loading it now."));
+        SetDownloadProgress(TEXT("Import complete / 导入完成."));
+        SetGameLog(TEXT("Imported model copied to LiteRT-LM downloaded-model storage."));
 
+#if PLATFORM_ANDROID
+        SetModelStatus(FString::Printf(TEXT("Import model / 导入模型: complete. Tap Load Downloaded Model to load it. Path: %s"), *ImportedPath));
+        SetGameLog(TEXT("Import complete. Tap Load Downloaded Model when you are ready to load the 2.6GB model."));
+#else
         if (GetWorld())
         {
             GetWorldTimerManager().SetTimer(
@@ -620,6 +651,7 @@ void AWinyunqDemoGameMode::FinishModelImport(bool bSuccess, const FString& Impor
                 0.1f,
                 false);
         }
+#endif
         return;
     }
 
@@ -1433,17 +1465,21 @@ void AWinyunqDemoGameMode::StartRuntimeWerewolfGame()
 void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
 {
     ShowRuntimeWerewolfGameUI(true);
+    ReleaseRuntimeAISessions();
 
     RuntimeRoundIndex = 0;
+    RuntimeDiscussionTurnCursor = 0;
     HumanVoteTarget = INDEX_NONE;
     RuntimeActiveAIPlayerIndex = INDEX_NONE;
     RuntimePhase = EAIWerewolfRuntimePhase::Setup;
     RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
     bRuntimeAIRequestInFlight = false;
+    bRuntimeWaitingForHumanSpeech = false;
     RuntimeActiveAIResponse.Reset();
     RuntimePlayers.Reset();
     RuntimePendingAIPlayers.Reset();
     RuntimeVoteCounts.Reset();
+    RuntimeTranscript.Reset();
 
     const int32 ClampedPlayerCount = FMath::Clamp(SelectedPlayerCount, 5, MaxRuntimePlayers);
     TArray<FString> AIRoles;
@@ -1482,6 +1518,7 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
         Player.bAlive = true;
         Player.bHuman = PlayerIndex == 0;
         RuntimePlayers.Add(Player);
+        RuntimeAISessionOwners.Add(NewObject<UObject>(this));
     }
 
     if (RuntimeChatScrollBox)
@@ -1500,27 +1537,49 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
     AppendRuntimeChatMessage(
         TEXT("System / 系统"),
         ULiteRtLmBlueprintLibrary::IsLiteRtLmModelLoaded()
-            ? TEXT("LiteRT-LM model is loaded. This UI is ready for model-backed AI prompts.")
-            : TEXT("LiteRT-LM model is not loaded yet. The demo uses local scripted AI so the game remains playable."),
+            ? TEXT("LiteRT-LM model is loaded. AI speech and votes will use local model inference.")
+            : TEXT("LiteRT-LM model is not loaded. This demo will not fake AI dialogue; go back and load the model first."),
         FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
 
+    if (!ULiteRtLmBlueprintLibrary::IsLiteRtLmModelLoaded())
+    {
+        RefreshRuntimePhaseText();
+        RebuildRuntimeVoteButtons();
+        return;
+    }
+
     RunRuntimeNightPhase();
+}
+
+void AWinyunqDemoGameMode::ReleaseRuntimeAISessions()
+{
+    for (UObject* SessionOwner : RuntimeAISessionOwners)
+    {
+        if (IsValid(SessionOwner))
+        {
+            ULiteRtLmBlueprintLibrary::ReleaseLiteRtLmSession(this, SessionOwner);
+        }
+    }
+    RuntimeAISessionOwners.Reset();
 }
 
 void AWinyunqDemoGameMode::ReturnToSetupUI()
 {
     RuntimePhase = EAIWerewolfRuntimePhase::Setup;
+    bRuntimeWaitingForHumanSpeech = false;
     ShowRuntimeWerewolfGameUI(false);
     SetGameLog(TEXT("Returned to setup / 已返回设置界面."));
 }
 
 void AWinyunqDemoGameMode::AdvanceRuntimeWerewolfPhase()
 {
-    if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0)
+    if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0 || bRuntimeWaitingForHumanSpeech)
     {
         AppendRuntimeChatMessage(
             TEXT("System / 系统"),
-            TEXT("AI is still thinking. The game will continue automatically when the request finishes."),
+            bRuntimeWaitingForHumanSpeech
+                ? TEXT("It is your speech turn. Type a message and tap Speak to continue.")
+                : TEXT("AI is still thinking. The game will continue automatically when the request finishes."),
             FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
         return;
     }
@@ -1559,6 +1618,8 @@ void AWinyunqDemoGameMode::RunRuntimeNightPhase()
     RuntimePhase = EAIWerewolfRuntimePhase::Night;
     ++RuntimeRoundIndex;
     HumanVoteTarget = INDEX_NONE;
+    RuntimeDiscussionTurnCursor = 0;
+    bRuntimeWaitingForHumanSpeech = false;
     RuntimePendingAIPlayers.Reset();
     RuntimeVoteCounts.Reset();
     RefreshRuntimePhaseText();
@@ -1584,7 +1645,10 @@ void AWinyunqDemoGameMode::RunRuntimeNightPhase()
         return;
     }
 
-    CompleteRuntimeNightPhaseFromAI(TEXT(""));
+    AppendRuntimeChatMessage(
+        TEXT("System / 系统"),
+        TEXT("LiteRT-LM model is not available, so night cannot resolve. Load the model and start a new game."),
+        FLinearColor(0.93f, 0.42f, 0.36f, 1.0f));
 }
 
 void AWinyunqDemoGameMode::CompleteRuntimeNightPhaseFromAI(const FString& AIText)
@@ -1592,7 +1656,16 @@ void AWinyunqDemoGameMode::CompleteRuntimeNightPhaseFromAI(const FString& AIText
     int32 TargetIndex = ParseRuntimeTargetIndexFromText(AIText);
     if (!RuntimePlayers.IsValidIndex(TargetIndex) || !RuntimePlayers[TargetIndex].bAlive || RuntimePlayers[TargetIndex].IsWerewolf())
     {
-        TargetIndex = ChooseRuntimeNightTarget();
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            TEXT("LiteRT-LM did not return a valid MCP night target. No one was eliminated tonight."),
+            FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
+        RefreshRuntimePlayers();
+        if (!EvaluateRuntimeWinCondition())
+        {
+            RunRuntimeDiscussionPhase();
+        }
+        return;
     }
 
     if (RuntimePlayers.IsValidIndex(TargetIndex))
@@ -1621,46 +1694,69 @@ void AWinyunqDemoGameMode::RunRuntimeDiscussionPhase()
     RuntimePhase = EAIWerewolfRuntimePhase::Discussion;
     HumanVoteTarget = INDEX_NONE;
     RuntimePendingAIPlayers.Reset();
+    RuntimeDiscussionTurnCursor = 0;
+    bRuntimeWaitingForHumanSpeech = false;
     RefreshRuntimePhaseText();
     RebuildRuntimeVoteButtons();
 
     AppendRuntimeChatMessage(
         TEXT("System / 系统"),
-        TEXT("Day discussion starts. AI players speak first. You can type your own speech below."),
+        TEXT("Day discussion starts. Players speak in seat order. Your turn can pause the game; AI turns resolve asynchronously through LiteRT-LM."),
         FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
 
-    for (int32 PlayerIndex = 1; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
-    {
-        if (RuntimePlayers[PlayerIndex].bAlive)
-        {
-            RuntimePendingAIPlayers.Add(PlayerIndex);
-        }
-    }
-
-    StartNextRuntimeDiscussionAI();
+    StartNextRuntimeDiscussionTurn();
 }
 
-void AWinyunqDemoGameMode::StartNextRuntimeDiscussionAI()
+void AWinyunqDemoGameMode::StartNextRuntimeDiscussionTurn()
 {
-    if (RuntimePendingAIPlayers.Num() == 0)
+    bRuntimeWaitingForHumanSpeech = false;
+
+    while (RuntimePlayers.IsValidIndex(RuntimeDiscussionTurnCursor) && !RuntimePlayers[RuntimeDiscussionTurnCursor].bAlive)
+    {
+        ++RuntimeDiscussionTurnCursor;
+    }
+
+    if (!RuntimePlayers.IsValidIndex(RuntimeDiscussionTurnCursor))
     {
         bRuntimeAIRequestInFlight = false;
         RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
         RuntimeActiveAIPlayerIndex = INDEX_NONE;
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            TEXT("All living players have spoken. You can start voting now."),
+            FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
         RefreshRuntimePhaseText();
+        RefreshRuntimePlayers();
         return;
     }
 
-    const int32 PlayerIndex = RuntimePendingAIPlayers[0];
-    RuntimePendingAIPlayers.RemoveAt(0);
+    const int32 PlayerIndex = RuntimeDiscussionTurnCursor;
     RuntimeActiveAIPlayerIndex = PlayerIndex;
+
+    if (PlayerIndex == 0)
+    {
+        bRuntimeWaitingForHumanSpeech = true;
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            TEXT("Your speech turn. Type your statement and tap Speak. / 轮到你发言，输入后点击发言。"),
+            FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
+        RefreshRuntimePhaseText();
+        RefreshRuntimePlayers();
+        return;
+    }
 
     if (StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest::DiscussionSpeech, PlayerIndex, BuildRuntimeDiscussionPrompt(PlayerIndex)))
     {
+        RefreshRuntimePlayers();
         return;
     }
 
-    CompleteRuntimeDiscussionAI(BuildRuntimeAISpeech(PlayerIndex));
+    AppendRuntimeChatMessage(
+        TEXT("System / 系统"),
+        TEXT("LiteRT-LM model is not available, so AI speech cannot continue. Load the model and start a new game."),
+        FLinearColor(0.93f, 0.42f, 0.36f, 1.0f));
+    RefreshRuntimePhaseText();
+    RefreshRuntimePlayers();
 }
 
 void AWinyunqDemoGameMode::CompleteRuntimeDiscussionAI(const FString& AIText)
@@ -1669,7 +1765,7 @@ void AWinyunqDemoGameMode::CompleteRuntimeDiscussionAI(const FString& AIText)
     FString Speech = AIText.TrimStartAndEnd();
     if (Speech.IsEmpty() || Speech.Len() > 420)
     {
-        Speech = RuntimePlayers.IsValidIndex(PlayerIndex) ? BuildRuntimeAISpeech(PlayerIndex) : TEXT("I need more information before voting.");
+        Speech = TEXT("[LiteRT-LM returned no usable speech for this turn.]");
     }
 
     if (RuntimePlayers.IsValidIndex(PlayerIndex) && RuntimePlayers[PlayerIndex].bAlive)
@@ -1680,7 +1776,8 @@ void AWinyunqDemoGameMode::CompleteRuntimeDiscussionAI(const FString& AIText)
     RuntimeActiveAIPlayerIndex = INDEX_NONE;
     RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
     bRuntimeAIRequestInFlight = false;
-    StartNextRuntimeDiscussionAI();
+    ++RuntimeDiscussionTurnCursor;
+    StartNextRuntimeDiscussionTurn();
 }
 
 void AWinyunqDemoGameMode::EnterRuntimeVotingPhase()
@@ -1692,6 +1789,8 @@ void AWinyunqDemoGameMode::EnterRuntimeVotingPhase()
 
     RuntimePhase = EAIWerewolfRuntimePhase::Voting;
     HumanVoteTarget = INDEX_NONE;
+    RuntimeDiscussionTurnCursor = 0;
+    bRuntimeWaitingForHumanSpeech = false;
     RuntimePendingAIPlayers.Reset();
     RuntimeVoteCounts.Reset();
     RefreshRuntimePhaseText();
@@ -1759,7 +1858,10 @@ void AWinyunqDemoGameMode::StartNextRuntimeVoteAI()
         return;
     }
 
-    CompleteRuntimeVoteAI(FString::Printf(TEXT("TARGET=P%d"), ChooseRuntimeVoteTarget(PlayerIndex) + 1));
+    AppendRuntimeChatMessage(
+        TEXT("System / 系统"),
+        TEXT("LiteRT-LM model is not available, so AI voting cannot continue. Load the model and start a new game."),
+        FLinearColor(0.93f, 0.42f, 0.36f, 1.0f));
 }
 
 void AWinyunqDemoGameMode::CompleteRuntimeVoteAI(const FString& AIText)
@@ -1768,7 +1870,15 @@ void AWinyunqDemoGameMode::CompleteRuntimeVoteAI(const FString& AIText)
     int32 TargetIndex = ParseRuntimeTargetIndexFromText(AIText);
     if (!IsRuntimeVoteTargetValid(TargetIndex, VoterIndex))
     {
-        TargetIndex = ChooseRuntimeVoteTarget(VoterIndex);
+        AppendRuntimeChatMessage(
+            RuntimePlayers.IsValidIndex(VoterIndex) ? RuntimePlayers[VoterIndex].Name : TEXT("AI"),
+            TEXT("MCP vote failed or returned an invalid target, so I abstain."),
+            RuntimePlayers.IsValidIndex(VoterIndex) ? RuntimePlayers[VoterIndex].AvatarColor : FLinearColor(0.80f, 0.82f, 0.86f, 1.0f));
+        RuntimeActiveAIPlayerIndex = INDEX_NONE;
+        RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+        bRuntimeAIRequestInFlight = false;
+        StartNextRuntimeVoteAI();
+        return;
     }
 
     if (RuntimePlayers.IsValidIndex(TargetIndex))
@@ -1776,7 +1886,7 @@ void AWinyunqDemoGameMode::CompleteRuntimeVoteAI(const FString& AIText)
         RuntimeVoteCounts.FindOrAdd(TargetIndex)++;
         AppendRuntimeChatMessage(
             RuntimePlayers.IsValidIndex(VoterIndex) ? RuntimePlayers[VoterIndex].Name : TEXT("AI"),
-            FString::Printf(TEXT("I vote for %s."), *RuntimePlayers[TargetIndex].Name),
+            FString::Printf(TEXT("MCP vote: I vote for %s."), *RuntimePlayers[TargetIndex].Name),
             RuntimePlayers.IsValidIndex(VoterIndex) ? RuntimePlayers[VoterIndex].AvatarColor : FLinearColor(0.80f, 0.82f, 0.86f, 1.0f));
     }
 
@@ -1881,6 +1991,10 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
 {
     if (!ULiteRtLmBlueprintLibrary::IsLiteRtLmModelLoaded())
     {
+        bRuntimeAIRequestInFlight = false;
+        RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+        RuntimeActiveAIPlayerIndex = INDEX_NONE;
+        RefreshRuntimePhaseText();
         return false;
     }
 
@@ -1889,17 +2003,25 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
         return true;
     }
 
+    if (!RuntimePlayers.IsValidIndex(ActorPlayerIndex) || !RuntimePlayers[ActorPlayerIndex].bAlive)
+    {
+        return false;
+    }
+
     RuntimeAIRequestType = RequestType;
     RuntimeActiveAIPlayerIndex = ActorPlayerIndex;
     RuntimeActiveAIResponse.Reset();
     bRuntimeAIRequestInFlight = true;
     RefreshRuntimePhaseText();
+    RefreshRuntimePlayers();
 
     const FString SystemPrompt =
-        TEXT("You are an AI player inside a Werewolf party game demo. ")
-        TEXT("Follow the requested output format exactly. Keep responses short. ")
-        TEXT("Do not reveal hidden roles unless the prompt says the role is yours. ")
-        TEXT("When choosing a target, output a line like TARGET=P3.");
+        TEXT("You are a local LiteRT-LM agent inside an AI Werewolf demo. ")
+        TEXT("Act only as the assigned player and use that player's private role. ")
+        TEXT("The same model is reused for many players, so obey the current prompt over previous turns. ")
+        TEXT("Keep responses concise. Do not reveal hidden roles unless it is your own strategic choice. ")
+        TEXT("When a night target or vote is requested, use the MCP tool werewolf_vote with target like P3 and a short reason. ")
+        TEXT("If tool calls are unavailable, output TARGET=P# and REASON=short reason.");
 
     FLiteRtLmBlueprintChunkDelegate ChunkDelegate;
     ChunkDelegate.BindDynamic(this, &AWinyunqDemoGameMode::HandleRuntimeAIChunk);
@@ -1915,11 +2037,15 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
         ELiteRtLmConstraintType::None,
         TEXT(""));
 
-    ULiteRtLmBlueprintLibrary::SendLiteRtLmTextChatWithSystemPrompt(
+    UObject* SessionOwner = RuntimeAISessionOwners.IsValidIndex(ActorPlayerIndex) && IsValid(RuntimeAISessionOwners[ActorPlayerIndex])
+        ? RuntimeAISessionOwners[ActorPlayerIndex].Get()
+        : static_cast<UObject*>(this);
+
+    ULiteRtLmBlueprintLibrary::SendLiteRtLmJsonChat(
         this,
-        UserPrompt,
-        SystemPrompt,
-        this,
+        BuildRuntimeAIMessageJson(SystemPrompt, UserPrompt),
+        BuildRuntimeWerewolfToolsJson(),
+        SessionOwner,
         ChunkDelegate,
         DoneDelegate,
         SamplingParams);
@@ -1927,19 +2053,104 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
     return true;
 }
 
-FString AWinyunqDemoGameMode::BuildRuntimeGameStateText() const
+FLiteRtLmConfig AWinyunqDemoGameMode::BuildRuntimeModelConfig(const FString& ModelPath) const
+{
+    FLiteRtLmConfig Config;
+    Config.ModelPath = ModelPath;
+    Config.ToolsJson = BuildRuntimeWerewolfToolsJson();
+    Config.bEnableVision = false;
+    Config.bEnableAudio = false;
+    Config.bEnableStreaming = true;
+
+#if PLATFORM_ANDROID
+    Config.Backend = TEXT("cpu");
+    Config.MaxNumTokens = 1024;
+    Config.NumThreads = 4;
+    Config.PrefillChunkSize = 512;
+    Config.bOptimizeShader = false;
+    Config.bShareConstantTensors = true;
+    Config.bEnableHostMappedPointer = false;
+#else
+    Config.Backend = TEXT("gpu");
+    Config.MaxNumTokens = 2048;
+    Config.NumThreads = 8;
+    Config.PrefillChunkSize = 1024;
+    Config.bOptimizeShader = true;
+    Config.bShareConstantTensors = true;
+    Config.bEnableHostMappedPointer = true;
+#endif
+
+    return Config;
+}
+
+FString AWinyunqDemoGameMode::BuildRuntimeWerewolfToolsJson() const
+{
+    return TEXT("[{\"type\":\"function\",\"function\":{\"name\":\"werewolf_vote\",\"description\":\"MCP voting channel for the AI Werewolf demo. Cast one night target or daytime vote.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"target\":{\"type\":\"string\",\"description\":\"Player id such as P2 or P7.\"},\"reason\":{\"type\":\"string\",\"description\":\"Short reason for the vote.\"}},\"required\":[\"target\"]}}}]");
+}
+
+FString AWinyunqDemoGameMode::BuildRuntimeAIMessageJson(const FString& SystemPrompt, const FString& UserPrompt) const
+{
+    TArray<TSharedPtr<FJsonValue>> Messages;
+
+    TSharedPtr<FJsonObject> SystemMessage = MakeShared<FJsonObject>();
+    SystemMessage->SetStringField(TEXT("role"), TEXT("system"));
+    SystemMessage->SetStringField(TEXT("content"), SystemPrompt);
+    Messages.Add(MakeShared<FJsonValueObject>(SystemMessage));
+
+    TSharedPtr<FJsonObject> UserMessage = MakeShared<FJsonObject>();
+    UserMessage->SetStringField(TEXT("role"), TEXT("user"));
+    UserMessage->SetStringField(TEXT("content"), UserPrompt);
+    Messages.Add(MakeShared<FJsonValueObject>(UserMessage));
+
+    FString MessagesJson;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&MessagesJson);
+    FJsonSerializer::Serialize(Messages, Writer);
+    return MessagesJson;
+}
+
+FString AWinyunqDemoGameMode::BuildRuntimeRecentTranscriptText(int32 MaxLines) const
+{
+    if (RuntimeTranscript.Num() == 0)
+    {
+        return TEXT("Recent table transcript: none yet.\n");
+    }
+
+    FString Transcript = TEXT("Recent table transcript:\n");
+    const int32 StartIndex = FMath::Max(0, RuntimeTranscript.Num() - FMath::Max(1, MaxLines));
+    for (int32 Index = StartIndex; Index < RuntimeTranscript.Num(); ++Index)
+    {
+        Transcript += FString::Printf(TEXT("- %s\n"), *RuntimeTranscript[Index]);
+    }
+    return Transcript;
+}
+
+FString AWinyunqDemoGameMode::BuildRuntimeGameStateText(int32 PerspectivePlayerIndex) const
 {
     FString State = FString::Printf(TEXT("Round=%d\nPlayers:\n"), RuntimeRoundIndex);
     for (int32 PlayerIndex = 0; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
     {
         const FAIWerewolfRuntimePlayer& Player = RuntimePlayers[PlayerIndex];
+        FString PrivateNote = TEXT("");
+        if (PlayerIndex == PerspectivePlayerIndex)
+        {
+            PrivateNote = FString::Printf(TEXT(", you_are=%s"), *Player.Role);
+        }
+        else if (RuntimePlayers.IsValidIndex(PerspectivePlayerIndex)
+            && RuntimePlayers[PerspectivePlayerIndex].IsWerewolf()
+            && Player.IsWerewolf())
+        {
+            PrivateNote = TEXT(", known_werewolf_teammate=true");
+        }
+
         State += FString::Printf(
-            TEXT("- P%d %s: %s, public_role=%s\n"),
+            TEXT("- P%d %s: %s, public_role=%s%s\n"),
             PlayerIndex + 1,
             *Player.Name,
             Player.bAlive ? TEXT("alive") : TEXT("out"),
-            *GetRuntimeRoleDisplay(Player));
+            *GetRuntimeRoleDisplay(Player),
+            *PrivateNote);
     }
+    State += BuildRuntimeRecentTranscriptText();
     return State;
 }
 
@@ -1955,8 +2166,10 @@ FString AWinyunqDemoGameMode::BuildRuntimeNightPrompt(int32 ActorPlayerIndex) co
     }
 
     return FString::Printf(
-        TEXT("%s\nYou are a werewolf team decision maker. Choose one living non-werewolf night target from: %s.\nOutput exactly two short lines:\nTARGET=P#\nREASON=short reason"),
-        *BuildRuntimeGameStateText(),
+        TEXT("%s\nYou are %s. Your private role is %s. The werewolf team must choose one living non-werewolf night target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
+        *BuildRuntimeGameStateText(ActorPlayerIndex),
+        RuntimePlayers.IsValidIndex(ActorPlayerIndex) ? *RuntimePlayers[ActorPlayerIndex].Name : TEXT("the werewolf team"),
+        RuntimePlayers.IsValidIndex(ActorPlayerIndex) ? *RuntimePlayers[ActorPlayerIndex].Role : TEXT("Werewolf"),
         *Candidates);
 }
 
@@ -1964,12 +2177,14 @@ FString AWinyunqDemoGameMode::BuildRuntimeDiscussionPrompt(int32 ActorPlayerInde
 {
     if (!RuntimePlayers.IsValidIndex(ActorPlayerIndex))
     {
-        return BuildRuntimeGameStateText();
+        return BuildRuntimeGameStateText(ActorPlayerIndex);
     }
 
     return FString::Printf(
-        TEXT("%s\nYou are %s. Your private role is %s. Give one concise daytime speech as this player. Do not output JSON. Do not choose a vote yet."),
-        *BuildRuntimeGameStateText(),
+        TEXT("%s\nCurrent turn: P%d %s.\nYou are %s. Your private role is %s. Give one concise daytime speech as this player in first person. Do not output JSON. Do not call tools. Do not choose a final vote yet."),
+        *BuildRuntimeGameStateText(ActorPlayerIndex),
+        ActorPlayerIndex + 1,
+        *RuntimePlayers[ActorPlayerIndex].Name,
         *RuntimePlayers[ActorPlayerIndex].Name,
         *RuntimePlayers[ActorPlayerIndex].Role);
 }
@@ -1978,7 +2193,7 @@ FString AWinyunqDemoGameMode::BuildRuntimeVotePrompt(int32 ActorPlayerIndex) con
 {
     if (!RuntimePlayers.IsValidIndex(ActorPlayerIndex))
     {
-        return BuildRuntimeGameStateText();
+        return BuildRuntimeGameStateText(ActorPlayerIndex);
     }
 
     FString Candidates;
@@ -1991,8 +2206,8 @@ FString AWinyunqDemoGameMode::BuildRuntimeVotePrompt(int32 ActorPlayerIndex) con
     }
 
     return FString::Printf(
-        TEXT("%s\nYou are %s. Your private role is %s. Choose one vote target from: %s.\nOutput exactly two short lines:\nTARGET=P#\nREASON=short reason"),
-        *BuildRuntimeGameStateText(),
+        TEXT("%s\nYou are %s. Your private role is %s. Choose one vote target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
+        *BuildRuntimeGameStateText(ActorPlayerIndex),
         *RuntimePlayers[ActorPlayerIndex].Name,
         *RuntimePlayers[ActorPlayerIndex].Role,
         *Candidates);
@@ -2177,7 +2392,11 @@ void AWinyunqDemoGameMode::RefreshRuntimePlayers()
         if (RuntimePlayerStatusTexts.IsValidIndex(PlayerIndex) && RuntimePlayerStatusTexts[PlayerIndex])
         {
             FString Status = Player.bAlive ? TEXT("Alive / 存活") : TEXT("Out / 出局");
-            if (RuntimePhase == EAIWerewolfRuntimePhase::Voting && Player.bAlive && PlayerIndex != 0)
+            if (Player.bAlive && PlayerIndex == RuntimeActiveAIPlayerIndex)
+            {
+                Status = PlayerIndex == 0 ? TEXT("Your turn / 你的回合") : TEXT("Thinking / 思考中");
+            }
+            if (RuntimePhase == EAIWerewolfRuntimePhase::Voting && Player.bAlive && PlayerIndex != 0 && PlayerIndex != RuntimeActiveAIPlayerIndex)
             {
                 Status = PlayerIndex == HumanVoteTarget ? TEXT("Voted / 已选择") : TEXT("Tap to vote / 点击投票");
             }
@@ -2227,7 +2446,12 @@ void AWinyunqDemoGameMode::RefreshRuntimePhaseText()
         break;
     }
 
-    if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0)
+    if (bRuntimeWaitingForHumanSpeech)
+    {
+        Instruction = TEXT("Your speech turn is blocking progress. Type your statement and tap Speak. / 轮到你发言，输入后点击发言。");
+        NextLabel = TEXT("Your Turn / 你的回合");
+    }
+    else if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0)
     {
         Instruction = TEXT("AI is thinking asynchronously. You can watch the table; the next step unlocks when AI finishes. / AI 正在异步思考，完成后自动继续。");
         NextLabel = TEXT("AI Thinking... / AI 思考中");
@@ -2247,7 +2471,7 @@ void AWinyunqDemoGameMode::RefreshRuntimePhaseText()
     }
     if (RuntimeNextPhaseButton)
     {
-        RuntimeNextPhaseButton->SetIsEnabled(!bRuntimeAIRequestInFlight && RuntimePendingAIPlayers.Num() == 0);
+        RuntimeNextPhaseButton->SetIsEnabled(!bRuntimeAIRequestInFlight && RuntimePendingAIPlayers.Num() == 0 && !bRuntimeWaitingForHumanSpeech);
     }
 }
 
@@ -2299,6 +2523,15 @@ void AWinyunqDemoGameMode::AppendRuntimeChatMessage(const FString& Speaker, cons
         RowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
     }
     RuntimeChatScrollBox->ScrollToEnd();
+
+    FString TranscriptLine = FString::Printf(TEXT("%s: %s"), *Speaker, *Message);
+    TranscriptLine.ReplaceInline(TEXT("\r"), TEXT(" "));
+    TranscriptLine.ReplaceInline(TEXT("\n"), TEXT(" "));
+    RuntimeTranscript.Add(TranscriptLine.Left(360));
+    if (RuntimeTranscript.Num() > 48)
+    {
+        RuntimeTranscript.RemoveAt(0, RuntimeTranscript.Num() - 48);
+    }
 }
 
 FString AWinyunqDemoGameMode::BuildRuntimeAISpeech(int32 PlayerIndex) const
@@ -2431,22 +2664,26 @@ void AWinyunqDemoGameMode::HandleRuntimeSendClicked()
     }
 
     RuntimePlayerInput->SetText(FText::GetEmpty());
-    AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(0) ? RuntimePlayers[0].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
-
-    if (RuntimePhase == EAIWerewolfRuntimePhase::Discussion)
+    if (RuntimePhase != EAIWerewolfRuntimePhase::Discussion)
     {
-        for (int32 PlayerIndex = 1; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
-        {
-            if (RuntimePlayers[PlayerIndex].bAlive)
-            {
-                AppendRuntimeChatMessage(
-                    RuntimePlayers[PlayerIndex].Name,
-                    TEXT("Noted. I will compare that with the vote result."),
-                    RuntimePlayers[PlayerIndex].AvatarColor);
-                break;
-            }
-        }
+        AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(0) ? RuntimePlayers[0].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
+        return;
     }
+
+    if (!bRuntimeWaitingForHumanSpeech || RuntimeActiveAIPlayerIndex != 0)
+    {
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            TEXT("Please wait for your speech turn. / 请等待轮到你发言。"),
+            FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
+        return;
+    }
+
+    AppendRuntimeChatMessage(TEXT("You / 玩家"), Message, RuntimePlayers.IsValidIndex(0) ? RuntimePlayers[0].AvatarColor : FLinearColor(0.22f, 0.48f, 0.95f, 1.0f));
+    bRuntimeWaitingForHumanSpeech = false;
+    RuntimeActiveAIPlayerIndex = INDEX_NONE;
+    ++RuntimeDiscussionTurnCursor;
+    StartNextRuntimeDiscussionTurn();
 }
 
 void AWinyunqDemoGameMode::HandleRuntimeNextPhaseClicked()
@@ -2521,17 +2758,24 @@ void AWinyunqDemoGameMode::HandleRuntimeAIChunk(const FString& TextChunk)
 
 void AWinyunqDemoGameMode::HandleRuntimeAIDone(const FLiteRtLmResult& Result)
 {
+    const EAIWerewolfRuntimeAIRequest CompletedRequestType = RuntimeAIRequestType;
     FString AIText = !Result.FullText.IsEmpty() ? Result.FullText : RuntimeActiveAIResponse;
+    if ((CompletedRequestType == EAIWerewolfRuntimeAIRequest::NightKill || CompletedRequestType == EAIWerewolfRuntimeAIRequest::Vote)
+        && !Result.FullJson.IsEmpty())
+    {
+        AIText += TEXT("\n");
+        AIText += Result.FullJson;
+    }
+
     if (!Result.ErrorMsg.IsEmpty())
     {
         AppendRuntimeChatMessage(
             TEXT("System / 系统"),
-            FString::Printf(TEXT("LiteRT-LM AI request failed, using local fallback. Error: %s"), *Result.ErrorMsg),
+            FString::Printf(TEXT("LiteRT-LM AI request failed. Error: %s"), *Result.ErrorMsg),
             FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
         AIText.Reset();
     }
 
-    const EAIWerewolfRuntimeAIRequest CompletedRequestType = RuntimeAIRequestType;
     RuntimeActiveAIResponse.Reset();
 
     switch (CompletedRequestType)
