@@ -36,6 +36,13 @@ enum class EAIWerewolfRuntimeAIRequest : uint8
     Vote
 };
 
+enum class EAIWerewolfRuntimeLanguage : uint8
+{
+    English,
+    Chinese,
+    Bilingual
+};
+
 struct FAIWerewolfRuntimePlayer
 {
     FString Name;
@@ -103,6 +110,12 @@ private:
     TObjectPtr<UButton> RuntimeNextPhaseButton;
 
     UPROPERTY()
+    TObjectPtr<UTextBlock> SetupLanguageButtonText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> RuntimeLanguageButtonText;
+
+    UPROPERTY()
     TObjectPtr<UScrollBox> RuntimeChatScrollBox;
 
     UPROPERTY()
@@ -134,10 +147,13 @@ private:
     int32 RuntimeActiveAIPlayerIndex = INDEX_NONE;
     EAIWerewolfRuntimePhase RuntimePhase = EAIWerewolfRuntimePhase::Setup;
     EAIWerewolfRuntimeAIRequest RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+    EAIWerewolfRuntimeLanguage RuntimeLanguage = EAIWerewolfRuntimeLanguage::Bilingual;
     bool bRuntimeAIRequestInFlight = false;
     bool bRuntimeWaitingForHumanSpeech = false;
     bool bModelLoadInFlight = false;
     bool bStartGameAfterModelLoad = false;
+    bool bRuntimeAutoPlayHuman = false;
+    int32 RuntimeAutoPlayMaxRounds = 2;
     FString RuntimeActiveAIResponse;
     TArray<FAIWerewolfRuntimePlayer> RuntimePlayers;
     TArray<int32> RuntimePendingAIPlayers;
@@ -157,9 +173,11 @@ private:
     TArray<FString> RuntimeTranscript;
 
     FTimerHandle DeferredLoadModelTimerHandle;
+    FTimerHandle RuntimeAutoPlayTimerHandle;
     FDelegateHandle AndroidImportActivityResultHandle;
 
     void BindAIWerewolfSetupButtons(UUserWidget* Widget);
+    void ApplyRuntimeCommandLineOptions();
     UButton* FindButton(FName WidgetName) const;
     UTextBlock* FindTextBlock(FName WidgetName) const;
     void SetTextBlock(FName WidgetName, const FString& Text);
@@ -184,6 +202,18 @@ private:
     void ExecuteDirectorFunction(FName FunctionName, const FString& ActionLabel);
     void ApplySelectedPlayerCountToObject(UObject* Target) const;
     void SetWidgetModelReady(bool bReady) const;
+    void BuildSetupLanguageControl();
+    void SetRuntimeLanguage(EAIWerewolfRuntimeLanguage NewLanguage);
+    void ToggleRuntimeLanguage();
+    void RefreshRuntimeLanguageLabels();
+    FString LocalizeRuntimeText(const FString& EnglishText, const FString& ChineseText) const;
+    FString GetRuntimeLanguageLabel() const;
+    FString GetRuntimeLanguagePromptInstruction() const;
+    FString BuildRuntimeAutoPlayerSpeech() const;
+    int32 ChooseRuntimeAutoPlayerVoteTarget() const;
+    void StartRuntimeAutoPlayTimerIfNeeded();
+    void StopRuntimeAutoPlayTimer();
+    void HandleRuntimeAutoPlayTick();
     void BuildRuntimeWerewolfGameUI();
     void ShowRuntimeWerewolfGameUI(bool bShow);
     void StartRuntimeWerewolfGame();
@@ -246,6 +276,9 @@ private:
 
     UFUNCTION()
     void HandleAutoTestClicked();
+
+    UFUNCTION()
+    void HandleLanguageToggleClicked();
 
     UFUNCTION()
     void HandleResetGameClicked();

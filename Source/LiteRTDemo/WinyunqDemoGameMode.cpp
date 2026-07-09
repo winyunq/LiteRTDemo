@@ -292,6 +292,7 @@ void AWinyunqDemoGameMode::BeginPlay()
             PC->SetInputMode(InputMode);
 
             BindAIWerewolfSetupButtons(MainUI);
+            ApplyRuntimeCommandLineOptions();
 
             const bool bAutoStart = FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoStart"));
             const bool bAutoLoadModel = FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoLoadModel"));
@@ -356,6 +357,8 @@ void AWinyunqDemoGameMode::BindAIWerewolfSetupButtons(UUserWidget* Widget)
     SetTextBlock(TEXT("DownloadE2BText"), TEXT("Download Gemma 4 E2B / 下载模型"));
     SetTextBlock(TEXT("LoadDownloadedText"), TEXT("Load Downloaded Model / 加载已下载模型"));
     SetTextBlock(TEXT("ImportModelText"), TEXT("Import Model / 导入模型"));
+    BuildSetupLanguageControl();
+    RefreshRuntimeLanguageLabels();
 
     const FString MissingSummary = MissingButtons.Num() > 0
         ? FString::Printf(TEXT(" Missing: %s."), *FString::Join(MissingButtons, TEXT(", ")))
@@ -367,6 +370,41 @@ void AWinyunqDemoGameMode::BindAIWerewolfSetupButtons(UUserWidget* Widget)
         TEXT("Setup controls bound at runtime / 设置按钮已在运行时绑定: %d buttons.%s"),
         BoundButtonCount,
         *MissingSummary));
+}
+
+void AWinyunqDemoGameMode::ApplyRuntimeCommandLineOptions()
+{
+    FString LanguageArg;
+    if (FParse::Value(FCommandLine::Get(), TEXT("AIWerewolfLanguage="), LanguageArg))
+    {
+        LanguageArg = LanguageArg.ToLower();
+        if (LanguageArg == TEXT("zh") || LanguageArg == TEXT("cn") || LanguageArg == TEXT("chinese"))
+        {
+            SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::Chinese);
+        }
+        else if (LanguageArg == TEXT("en") || LanguageArg == TEXT("english"))
+        {
+            SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::English);
+        }
+        else
+        {
+            SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::Bilingual);
+        }
+    }
+
+    bRuntimeAutoPlayHuman = FParse::Param(FCommandLine::Get(), TEXT("AIWerewolfAutoPlayHuman"));
+    FParse::Value(FCommandLine::Get(), TEXT("AIWerewolfAutoPlayMaxRounds="), RuntimeAutoPlayMaxRounds);
+    RuntimeAutoPlayMaxRounds = FMath::Clamp(RuntimeAutoPlayMaxRounds, 1, 12);
+
+    if (bRuntimeAutoPlayHuman)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Human autoplay enabled. MaxRounds=%d Language=%s"),
+            RuntimeAutoPlayMaxRounds,
+            *GetRuntimeLanguageLabel());
+        SetGameLog(FString::Printf(TEXT("Auto play human enabled / 自动玩家已启用. Language=%s, MaxRounds=%d."),
+            *GetRuntimeLanguageLabel(),
+            RuntimeAutoPlayMaxRounds));
+    }
 }
 
 UButton* AWinyunqDemoGameMode::FindButton(FName WidgetName) const
@@ -411,8 +449,8 @@ void AWinyunqDemoGameMode::SetSelectedPlayerCount(int32 Count)
     SelectedPlayerCount = Count;
 
     SetTypedPropertyValue<int32>(ActiveAIWerewolfWidget, TEXT("SelectedPlayerCount"), Count);
-    SetTextBlock(TEXT("PlayerCountLabel"), FString::Printf(TEXT("Players / 玩家人数: %d"), Count));
-    SetGameLog(FString::Printf(TEXT("Selected player count / 已选择玩家人数: %d."), Count));
+    SetTextBlock(TEXT("PlayerCountLabel"), FString::Printf(TEXT("%s: %d"), *LocalizeRuntimeText(TEXT("Players"), TEXT("玩家人数")), Count));
+    SetGameLog(FString::Printf(TEXT("%s: %d."), *LocalizeRuntimeText(TEXT("Selected player count"), TEXT("已选择玩家人数")), Count));
 }
 
 void AWinyunqDemoGameMode::HandleDownloadE2BClicked()
@@ -878,6 +916,8 @@ void AWinyunqDemoGameMode::HandleStartGameClicked()
 
 void AWinyunqDemoGameMode::HandleAutoTestClicked()
 {
+    bRuntimeAutoPlayHuman = true;
+    RuntimeAutoPlayMaxRounds = FMath::Max(RuntimeAutoPlayMaxRounds, 2);
     if (RuntimePhase == EAIWerewolfRuntimePhase::Setup)
     {
         StartRuntimeWerewolfGame();
@@ -887,6 +927,13 @@ void AWinyunqDemoGameMode::HandleAutoTestClicked()
     {
         EnterRuntimeVotingPhase();
     }
+    StartRuntimeAutoPlayTimerIfNeeded();
+    SetGameLog(LocalizeRuntimeText(TEXT("Auto test enabled."), TEXT("自动测试已启用。")));
+}
+
+void AWinyunqDemoGameMode::HandleLanguageToggleClicked()
+{
+    ToggleRuntimeLanguage();
 }
 
 void AWinyunqDemoGameMode::HandleResetGameClicked()
@@ -1050,6 +1097,278 @@ void AWinyunqDemoGameMode::SetWidgetModelReady(bool bReady) const
     SetTypedPropertyValue<bool>(ActiveAIWerewolfWidget, TEXT("bModelReady"), bReady);
 }
 
+void AWinyunqDemoGameMode::BuildSetupLanguageControl()
+{
+    if (SetupLanguageButtonText || !ActiveAIWerewolfWidget)
+    {
+        return;
+    }
+
+    if (UButton* ExistingLanguageButton = FindButton(TEXT("LanguageButton")))
+    {
+        BindRuntimeButton(ExistingLanguageButton, GET_FUNCTION_NAME_CHECKED(AWinyunqDemoGameMode, HandleLanguageToggleClicked));
+        SetupLanguageButtonText = FindTextBlock(TEXT("LanguageText"));
+        return;
+    }
+
+    UPanelWidget* RootPanel = Cast<UPanelWidget>(ActiveAIWerewolfWidget->GetWidgetFromName(TEXT("RootCanvas")));
+    if (!RootPanel && ActiveAIWerewolfWidget->WidgetTree)
+    {
+        RootPanel = Cast<UPanelWidget>(ActiveAIWerewolfWidget->WidgetTree->RootWidget);
+    }
+
+    if (!RootPanel)
+    {
+        return;
+    }
+
+    UTextBlock* LanguageLabel = nullptr;
+    UButton* LanguageButton = CreateRuntimeButton(
+        TEXT("RuntimeSetupLanguageButton"),
+        TEXT("Language / 语言"),
+        GET_FUNCTION_NAME_CHECKED(AWinyunqDemoGameMode, HandleLanguageToggleClicked),
+        FLinearColor(0.18f, 0.24f, 0.34f, 1.0f),
+        &LanguageLabel);
+    if (!LanguageButton)
+    {
+        return;
+    }
+
+    SetupLanguageButtonText = LanguageLabel;
+    RootPanel->AddChild(LanguageButton);
+    if (UCanvasPanelSlot* LanguageSlot = Cast<UCanvasPanelSlot>(LanguageButton->Slot))
+    {
+        LanguageSlot->SetAnchors(FAnchors(1.0f, 0.0f));
+        LanguageSlot->SetAlignment(FVector2D(1.0f, 0.0f));
+        LanguageSlot->SetPosition(FVector2D(-18.0f, 18.0f));
+        LanguageSlot->SetSize(FVector2D(230.0f, 46.0f));
+    }
+}
+
+void AWinyunqDemoGameMode::SetRuntimeLanguage(EAIWerewolfRuntimeLanguage NewLanguage)
+{
+    RuntimeLanguage = NewLanguage;
+    RefreshRuntimeLanguageLabels();
+    RefreshRuntimePhaseText();
+    RefreshRuntimePlayers();
+    if (RuntimePlayerInput)
+    {
+        RuntimePlayerInput->SetHintText(FText::FromString(LocalizeRuntimeText(TEXT("Type your speech"), TEXT("输入你的发言"))));
+    }
+}
+
+void AWinyunqDemoGameMode::ToggleRuntimeLanguage()
+{
+    switch (RuntimeLanguage)
+    {
+    case EAIWerewolfRuntimeLanguage::English:
+        SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::Chinese);
+        break;
+    case EAIWerewolfRuntimeLanguage::Chinese:
+        SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::Bilingual);
+        break;
+    default:
+        SetRuntimeLanguage(EAIWerewolfRuntimeLanguage::English);
+        break;
+    }
+
+    const FString Message = FString::Printf(TEXT("%s: %s."),
+        *LocalizeRuntimeText(TEXT("Language"), TEXT("语言")),
+        *GetRuntimeLanguageLabel());
+    SetGameLog(Message);
+    if (RuntimeChatScrollBox)
+    {
+        AppendRuntimeChatMessage(TEXT("System / 系统"), Message, FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
+    }
+}
+
+void AWinyunqDemoGameMode::RefreshRuntimeLanguageLabels()
+{
+    const FString LanguageLabel = FString::Printf(TEXT("%s: %s"),
+        *LocalizeRuntimeText(TEXT("Lang"), TEXT("语言")),
+        *GetRuntimeLanguageLabel());
+
+    if (SetupLanguageButtonText)
+    {
+        SetupLanguageButtonText->SetText(FText::FromString(LanguageLabel));
+    }
+    else
+    {
+        SetTextBlock(TEXT("LanguageText"), LanguageLabel);
+    }
+
+    if (RuntimeLanguageButtonText)
+    {
+        RuntimeLanguageButtonText->SetText(FText::FromString(LanguageLabel));
+    }
+}
+
+FString AWinyunqDemoGameMode::LocalizeRuntimeText(const FString& EnglishText, const FString& ChineseText) const
+{
+    switch (RuntimeLanguage)
+    {
+    case EAIWerewolfRuntimeLanguage::English:
+        return EnglishText;
+    case EAIWerewolfRuntimeLanguage::Chinese:
+        return ChineseText;
+    default:
+        return FString::Printf(TEXT("%s / %s"), *EnglishText, *ChineseText);
+    }
+}
+
+FString AWinyunqDemoGameMode::GetRuntimeLanguageLabel() const
+{
+    switch (RuntimeLanguage)
+    {
+    case EAIWerewolfRuntimeLanguage::English:
+        return TEXT("English");
+    case EAIWerewolfRuntimeLanguage::Chinese:
+        return TEXT("中文");
+    default:
+        return TEXT("Bilingual / 双语");
+    }
+}
+
+FString AWinyunqDemoGameMode::GetRuntimeLanguagePromptInstruction() const
+{
+    switch (RuntimeLanguage)
+    {
+    case EAIWerewolfRuntimeLanguage::English:
+        return TEXT("Output language: English only. Keep names like P1, P2 unchanged.");
+    case EAIWerewolfRuntimeLanguage::Chinese:
+        return TEXT("Output language: Simplified Chinese only. Keep player ids like P1, P2 unchanged. Use concise Chinese speech.");
+    default:
+        return TEXT("Output language: bilingual English and Simplified Chinese. Keep player ids like P1, P2 unchanged. For speeches, put English first, then Chinese.");
+    }
+}
+
+FString AWinyunqDemoGameMode::BuildRuntimeAutoPlayerSpeech() const
+{
+    switch (RuntimeLanguage)
+    {
+    case EAIWerewolfRuntimeLanguage::English:
+        return TEXT("I am watching the vote pattern and will stay concise. I want each AI to explain one suspicion clearly.");
+    case EAIWerewolfRuntimeLanguage::Chinese:
+        return TEXT("我会观察投票和发言顺序。请每个 AI 明确说出一个怀疑点，不要只给空话。");
+    default:
+        return TEXT("I am watching the vote pattern and want clear suspicions. / 我会观察投票和发言顺序，请每个 AI 明确说出一个怀疑点。");
+    }
+}
+
+int32 AWinyunqDemoGameMode::ChooseRuntimeAutoPlayerVoteTarget() const
+{
+    for (int32 PlayerIndex = 0; PlayerIndex < RuntimePlayers.Num(); ++PlayerIndex)
+    {
+        if (IsRuntimeVoteTargetValid(PlayerIndex, RuntimeHumanPlayerIndex) && !RuntimePlayers[PlayerIndex].bHuman)
+        {
+            return PlayerIndex;
+        }
+    }
+
+    return INDEX_NONE;
+}
+
+void AWinyunqDemoGameMode::StartRuntimeAutoPlayTimerIfNeeded()
+{
+    if (!bRuntimeAutoPlayHuman || !GetWorld())
+    {
+        return;
+    }
+
+    if (!GetWorldTimerManager().IsTimerActive(RuntimeAutoPlayTimerHandle))
+    {
+        GetWorldTimerManager().SetTimer(
+            RuntimeAutoPlayTimerHandle,
+            this,
+            &AWinyunqDemoGameMode::HandleRuntimeAutoPlayTick,
+            0.75f,
+            true,
+            0.75f);
+    }
+}
+
+void AWinyunqDemoGameMode::StopRuntimeAutoPlayTimer()
+{
+    if (GetWorld())
+    {
+        GetWorldTimerManager().ClearTimer(RuntimeAutoPlayTimerHandle);
+    }
+}
+
+void AWinyunqDemoGameMode::HandleRuntimeAutoPlayTick()
+{
+    if (!bRuntimeAutoPlayHuman)
+    {
+        StopRuntimeAutoPlayTimer();
+        return;
+    }
+
+    if (RuntimePhase == EAIWerewolfRuntimePhase::Ended)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play reached game end at round %d."), RuntimeRoundIndex);
+        StopRuntimeAutoPlayTimer();
+        return;
+    }
+
+    if (RuntimeRoundIndex >= RuntimeAutoPlayMaxRounds && RuntimePhase == EAIWerewolfRuntimePhase::Results)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play completed requested rounds. Round=%d MaxRounds=%d"),
+            RuntimeRoundIndex,
+            RuntimeAutoPlayMaxRounds);
+        StopRuntimeAutoPlayTimer();
+        return;
+    }
+
+    if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0)
+    {
+        return;
+    }
+
+    if (bRuntimeWaitingForHumanSpeech && RuntimeActiveAIPlayerIndex == RuntimeHumanPlayerIndex)
+    {
+        if (RuntimePlayerInput)
+        {
+            RuntimePlayerInput->SetText(FText::FromString(BuildRuntimeAutoPlayerSpeech()));
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play submitting human speech. Round=%d"), RuntimeRoundIndex);
+        HandleRuntimeSendClicked();
+        return;
+    }
+
+    if (RuntimePhase == EAIWerewolfRuntimePhase::Discussion && !bRuntimeWaitingForHumanSpeech)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play advancing discussion to voting. Round=%d"), RuntimeRoundIndex);
+        EnterRuntimeVotingPhase();
+        return;
+    }
+
+    if (RuntimePhase == EAIWerewolfRuntimePhase::Voting)
+    {
+        if (HumanVoteTarget == INDEX_NONE)
+        {
+            const int32 TargetIndex = ChooseRuntimeAutoPlayerVoteTarget();
+            if (TargetIndex != INDEX_NONE)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play choosing human vote target P%d."), TargetIndex + 1);
+                HandleRuntimeVoteClicked(TargetIndex);
+            }
+        }
+
+        if (HumanVoteTarget != INDEX_NONE)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play resolving vote. Round=%d"), RuntimeRoundIndex);
+            ResolveRuntimeVote();
+        }
+        return;
+    }
+
+    if (RuntimePhase == EAIWerewolfRuntimePhase::Results)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Auto play advancing to next night. Round=%d"), RuntimeRoundIndex);
+        AdvanceRuntimeWerewolfPhase();
+    }
+}
+
 UTextBlock* AWinyunqDemoGameMode::CreateRuntimeText(
     FName WidgetName,
     const FString& Text,
@@ -1205,6 +1524,20 @@ void AWinyunqDemoGameMode::BuildRuntimeWerewolfGameUI()
     {
         PhaseSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         PhaseSlot->SetVerticalAlignment(VAlign_Center);
+    }
+
+    UTextBlock* RuntimeLanguageLabel = nullptr;
+    UButton* RuntimeLanguageButton = CreateRuntimeButton(
+        TEXT("RuntimeLanguageButton"),
+        TEXT("Language / 语言"),
+        GET_FUNCTION_NAME_CHECKED(AWinyunqDemoGameMode, HandleLanguageToggleClicked),
+        FLinearColor(0.18f, 0.24f, 0.34f, 1.0f),
+        &RuntimeLanguageLabel);
+    RuntimeLanguageButtonText = RuntimeLanguageLabel;
+    if (UHorizontalBoxSlot* LanguageSlot = HeaderBox->AddChildToHorizontalBox(RuntimeLanguageButton))
+    {
+        LanguageSlot->SetPadding(FMargin(8.0f, 0.0f));
+        LanguageSlot->SetVerticalAlignment(VAlign_Center);
     }
 
     UButton* BackButton = CreateRuntimeButton(
@@ -1424,7 +1757,7 @@ void AWinyunqDemoGameMode::BuildRuntimeWerewolfGameUI()
     }
 
     RuntimePlayerInput = ConstructRuntimeWidget<UEditableTextBox>(ActiveAIWerewolfWidget, TEXT("RuntimePlayerInput"));
-    RuntimePlayerInput->SetHintText(FText::FromString(TEXT("Type your speech / 输入你的发言")));
+    RuntimePlayerInput->SetHintText(FText::FromString(LocalizeRuntimeText(TEXT("Type your speech"), TEXT("输入你的发言"))));
     RuntimePlayerInput->SetClearKeyboardFocusOnCommit(false);
     if (UHorizontalBoxSlot* TextInputSlot = InputBox->AddChildToHorizontalBox(RuntimePlayerInput))
     {
@@ -1442,6 +1775,8 @@ void AWinyunqDemoGameMode::BuildRuntimeWerewolfGameUI()
     {
         SendSlot->SetVerticalAlignment(VAlign_Center);
     }
+
+    RefreshRuntimeLanguageLabels();
 }
 
 void AWinyunqDemoGameMode::ShowRuntimeWerewolfGameUI(bool bShow)
@@ -1481,6 +1816,7 @@ void AWinyunqDemoGameMode::StartRuntimeWerewolfGame()
 {
     ShowRuntimeWerewolfGameUI(true);
     ResetRuntimeWerewolfGame();
+    StartRuntimeAutoPlayTimerIfNeeded();
 }
 
 void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
@@ -1612,6 +1948,7 @@ void AWinyunqDemoGameMode::ReturnToSetupUI()
         ULiteRtLmBlueprintLibrary::StopLiteRtLmInference();
     }
     StopRuntimeAIWatchdog();
+    StopRuntimeAutoPlayTimer();
     RuntimePhase = EAIWerewolfRuntimePhase::Setup;
     bRuntimeWaitingForHumanSpeech = false;
     bRuntimeAIRequestInFlight = false;
@@ -2074,12 +2411,13 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
     const FString ActorName = RuntimePlayers.IsValidIndex(ActorPlayerIndex)
         ? RuntimePlayers[ActorPlayerIndex].Name
         : FString::Printf(TEXT("P%d"), ActorPlayerIndex + 1);
-    UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d started: type=%s actor=P%d %s prompt_len=%d"),
+    UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d started: type=%s actor=P%d %s prompt_len=%d language=%s"),
         RuntimeActiveAIRequestSerial,
         *RequestLabel,
         ActorPlayerIndex + 1,
         *ActorName,
-        UserPrompt.Len());
+        UserPrompt.Len(),
+        *GetRuntimeLanguageLabel());
     AppendRuntimeChatMessage(
         TEXT("System / 系统"),
         FString::Printf(TEXT("LiteRT-LM request #%d started: %s for P%d %s."),
@@ -2091,13 +2429,15 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
     RefreshRuntimePhaseText();
     RefreshRuntimePlayers();
 
-    const FString SystemPrompt =
+    const FString SystemPrompt = FString::Printf(
         TEXT("You are a local LiteRT-LM agent inside an AI Werewolf demo. ")
         TEXT("Act only as the assigned player and use that player's private role. ")
         TEXT("The same model is reused for many players, so obey the current prompt over previous turns. ")
         TEXT("Keep responses concise. Do not reveal hidden roles unless it is your own strategic choice. ")
+        TEXT("%s ")
         TEXT("When a night target or vote is requested, use the MCP tool werewolf_vote with target like P3 and a short reason. ")
-        TEXT("If tool calls are unavailable, output TARGET=P# and REASON=short reason.");
+        TEXT("If tool calls are unavailable, output TARGET=P# and REASON=short reason."),
+        *GetRuntimeLanguagePromptInstruction());
 
     FLiteRtLmBlueprintChunkDelegate ChunkDelegate;
     ChunkDelegate.BindDynamic(this, &AWinyunqDemoGameMode::HandleRuntimeAIChunk);
@@ -2382,8 +2722,9 @@ FString AWinyunqDemoGameMode::BuildRuntimeNightPrompt(int32 ActorPlayerIndex) co
     }
 
     return FString::Printf(
-        TEXT("%s\nYou are %s. Your private role is %s. The werewolf team must choose one living non-werewolf night target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
+        TEXT("%s\n%s\nYou are %s. Your private role is %s. The werewolf team must choose one living non-werewolf night target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
         *BuildRuntimeGameStateText(ActorPlayerIndex),
+        *GetRuntimeLanguagePromptInstruction(),
         RuntimePlayers.IsValidIndex(ActorPlayerIndex) ? *RuntimePlayers[ActorPlayerIndex].Name : TEXT("the werewolf team"),
         RuntimePlayers.IsValidIndex(ActorPlayerIndex) ? *RuntimePlayers[ActorPlayerIndex].Role : TEXT("Werewolf"),
         *Candidates);
@@ -2397,8 +2738,9 @@ FString AWinyunqDemoGameMode::BuildRuntimeDiscussionPrompt(int32 ActorPlayerInde
     }
 
     return FString::Printf(
-        TEXT("%s\nCurrent turn: P%d %s.\nYou are %s. Your private role is %s. Give one concise daytime speech as this player in first person. Do not output JSON. Do not call tools. Do not choose a final vote yet."),
+        TEXT("%s\n%s\nCurrent turn: P%d %s.\nYou are %s. Your private role is %s. Give one concise daytime speech as this player in first person. Do not output JSON. Do not call tools. Do not choose a final vote yet."),
         *BuildRuntimeGameStateText(ActorPlayerIndex),
+        *GetRuntimeLanguagePromptInstruction(),
         ActorPlayerIndex + 1,
         *RuntimePlayers[ActorPlayerIndex].Name,
         *RuntimePlayers[ActorPlayerIndex].Name,
@@ -2422,8 +2764,9 @@ FString AWinyunqDemoGameMode::BuildRuntimeVotePrompt(int32 ActorPlayerIndex) con
     }
 
     return FString::Printf(
-        TEXT("%s\nYou are %s. Your private role is %s. Choose one vote target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
+        TEXT("%s\n%s\nYou are %s. Your private role is %s. Choose one vote target from: %s.\nUse the MCP function werewolf_vote with target=P# and a short reason. If tools are unavailable, output:\nTARGET=P#\nREASON=short reason"),
         *BuildRuntimeGameStateText(ActorPlayerIndex),
+        *GetRuntimeLanguagePromptInstruction(),
         *RuntimePlayers[ActorPlayerIndex].Name,
         *RuntimePlayers[ActorPlayerIndex].Role,
         *Candidates);
