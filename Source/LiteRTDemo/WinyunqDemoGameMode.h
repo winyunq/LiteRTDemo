@@ -142,6 +142,14 @@ private:
     TArray<FAIWerewolfRuntimePlayer> RuntimePlayers;
     TArray<int32> RuntimePendingAIPlayers;
     TMap<int32, int32> RuntimeVoteCounts;
+    FTimerHandle RuntimeAIWatchdogTimerHandle;
+    double RuntimeAIRequestStartTimeSeconds = 0.0;
+    int32 RuntimeAIRequestSerial = 0;
+    int32 RuntimeActiveAIRequestSerial = 0;
+    int32 RuntimeAIReceivedChunkCount = 0;
+    int32 RuntimeAIReceivedCharCount = 0;
+    bool bRuntimeAIStopRequested = false;
+    bool bRuntimeAIStallWarningShown = false;
 
     UPROPERTY()
     TArray<TObjectPtr<UObject>> RuntimeAISessionOwners;
@@ -195,6 +203,11 @@ private:
     void FinishRuntimeVoteResolution();
     bool EvaluateRuntimeWinCondition();
     bool StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest RequestType, int32 ActorPlayerIndex, const FString& UserPrompt);
+    void StartRuntimeAIWatchdog();
+    void StopRuntimeAIWatchdog();
+    void HandleRuntimeAIWatchdogTick();
+    void FinishRuntimeAIRequestFromTimeout();
+    FString GetRuntimeAIRequestLabel(EAIWerewolfRuntimeAIRequest RequestType) const;
     FLiteRtLmConfig BuildRuntimeModelConfig(const FString& ModelPath) const;
     FString BuildRuntimeWerewolfToolsJson() const;
     FString BuildRuntimeAIMessageJson(const FString& SystemPrompt, const FString& UserPrompt) const;

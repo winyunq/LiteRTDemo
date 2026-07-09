@@ -51,6 +51,9 @@ namespace
 constexpr TCHAR Gemma4E2BModelFileName[] = TEXT("gemma-4-E2B-it.litertlm");
 constexpr double BytesPerMegabyte = 1024.0 * 1024.0;
 constexpr int32 MaxRuntimePlayers = 10;
+constexpr double RuntimeAIWatchdogIntervalSeconds = 5.0;
+constexpr double RuntimeAIStallWarningSeconds = 20.0;
+constexpr double RuntimeAIRequestTimeoutSeconds = 90.0;
 
 template <typename T>
 bool SetTypedPropertyValue(UObject* Target, FName PropertyName, const T& Value)
@@ -1483,6 +1486,13 @@ void AWinyunqDemoGameMode::StartRuntimeWerewolfGame()
 void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
 {
     ShowRuntimeWerewolfGameUI(true);
+    if (bRuntimeAIRequestInFlight)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Reset requested while AI request #%d is in flight; stopping inference."),
+            RuntimeActiveAIRequestSerial);
+        ULiteRtLmBlueprintLibrary::StopLiteRtLmInference();
+    }
+    StopRuntimeAIWatchdog();
     ReleaseRuntimeAISessions();
 
     RuntimeRoundIndex = 0;
@@ -1494,6 +1504,12 @@ void AWinyunqDemoGameMode::ResetRuntimeWerewolfGame()
     RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
     bRuntimeAIRequestInFlight = false;
     bRuntimeWaitingForHumanSpeech = false;
+    RuntimeAIRequestStartTimeSeconds = 0.0;
+    RuntimeActiveAIRequestSerial = 0;
+    RuntimeAIReceivedChunkCount = 0;
+    RuntimeAIReceivedCharCount = 0;
+    bRuntimeAIStopRequested = false;
+    bRuntimeAIStallWarningShown = false;
     RuntimeActiveAIResponse.Reset();
     RuntimePlayers.Reset();
     RuntimePendingAIPlayers.Reset();
@@ -1589,8 +1605,18 @@ void AWinyunqDemoGameMode::ReleaseRuntimeAISessions()
 
 void AWinyunqDemoGameMode::ReturnToSetupUI()
 {
+    if (bRuntimeAIRequestInFlight)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Return to setup requested while AI request #%d is in flight; stopping inference."),
+            RuntimeActiveAIRequestSerial);
+        ULiteRtLmBlueprintLibrary::StopLiteRtLmInference();
+    }
+    StopRuntimeAIWatchdog();
     RuntimePhase = EAIWerewolfRuntimePhase::Setup;
     bRuntimeWaitingForHumanSpeech = false;
+    bRuntimeAIRequestInFlight = false;
+    RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+    RuntimeActiveAIPlayerIndex = INDEX_NONE;
     ShowRuntimeWerewolfGameUI(false);
     SetGameLog(TEXT("Returned to setup / 已返回设置界面."));
 }
@@ -2018,6 +2044,7 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
         bRuntimeAIRequestInFlight = false;
         RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
         RuntimeActiveAIPlayerIndex = INDEX_NONE;
+        StopRuntimeAIWatchdog();
         RefreshRuntimePhaseText();
         return false;
     }
@@ -2035,7 +2062,32 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
     RuntimeAIRequestType = RequestType;
     RuntimeActiveAIPlayerIndex = ActorPlayerIndex;
     RuntimeActiveAIResponse.Reset();
+    RuntimeAIRequestStartTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+    RuntimeActiveAIRequestSerial = ++RuntimeAIRequestSerial;
+    RuntimeAIReceivedChunkCount = 0;
+    RuntimeAIReceivedCharCount = 0;
+    bRuntimeAIStopRequested = false;
+    bRuntimeAIStallWarningShown = false;
     bRuntimeAIRequestInFlight = true;
+
+    const FString RequestLabel = GetRuntimeAIRequestLabel(RequestType);
+    const FString ActorName = RuntimePlayers.IsValidIndex(ActorPlayerIndex)
+        ? RuntimePlayers[ActorPlayerIndex].Name
+        : FString::Printf(TEXT("P%d"), ActorPlayerIndex + 1);
+    UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d started: type=%s actor=P%d %s prompt_len=%d"),
+        RuntimeActiveAIRequestSerial,
+        *RequestLabel,
+        ActorPlayerIndex + 1,
+        *ActorName,
+        UserPrompt.Len());
+    AppendRuntimeChatMessage(
+        TEXT("System / 系统"),
+        FString::Printf(TEXT("LiteRT-LM request #%d started: %s for P%d %s."),
+            RuntimeActiveAIRequestSerial,
+            *RequestLabel,
+            ActorPlayerIndex + 1,
+            *ActorName),
+        FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
     RefreshRuntimePhaseText();
     RefreshRuntimePlayers();
 
@@ -2074,7 +2126,157 @@ bool AWinyunqDemoGameMode::StartRuntimeAIRequest(EAIWerewolfRuntimeAIRequest Req
         DoneDelegate,
         SamplingParams);
 
+    StartRuntimeAIWatchdog();
     return true;
+}
+
+void AWinyunqDemoGameMode::StartRuntimeAIWatchdog()
+{
+    StopRuntimeAIWatchdog();
+    if (!GetWorld())
+    {
+        return;
+    }
+
+    GetWorldTimerManager().SetTimer(
+        RuntimeAIWatchdogTimerHandle,
+        this,
+        &AWinyunqDemoGameMode::HandleRuntimeAIWatchdogTick,
+        RuntimeAIWatchdogIntervalSeconds,
+        true,
+        RuntimeAIWatchdogIntervalSeconds);
+}
+
+void AWinyunqDemoGameMode::StopRuntimeAIWatchdog()
+{
+    if (GetWorld())
+    {
+        GetWorldTimerManager().ClearTimer(RuntimeAIWatchdogTimerHandle);
+    }
+}
+
+void AWinyunqDemoGameMode::HandleRuntimeAIWatchdogTick()
+{
+    if (!bRuntimeAIRequestInFlight || RuntimeAIRequestType == EAIWerewolfRuntimeAIRequest::None)
+    {
+        StopRuntimeAIWatchdog();
+        return;
+    }
+
+    const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+    const double ElapsedSeconds = FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds);
+    const FString RequestLabel = GetRuntimeAIRequestLabel(RuntimeAIRequestType);
+    const FString ActorName = RuntimePlayers.IsValidIndex(RuntimeActiveAIPlayerIndex)
+        ? RuntimePlayers[RuntimeActiveAIPlayerIndex].Name
+        : FString::Printf(TEXT("P%d"), RuntimeActiveAIPlayerIndex + 1);
+
+    UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d pending: type=%s actor=P%d %s elapsed=%.1fs chunks=%d chars=%d stop_requested=%d"),
+        RuntimeActiveAIRequestSerial,
+        *RequestLabel,
+        RuntimeActiveAIPlayerIndex + 1,
+        *ActorName,
+        ElapsedSeconds,
+        RuntimeAIReceivedChunkCount,
+        RuntimeAIReceivedCharCount,
+        bRuntimeAIStopRequested ? 1 : 0);
+    RefreshRuntimePhaseText();
+    RefreshRuntimePlayers();
+
+    if (!bRuntimeAIStallWarningShown && ElapsedSeconds >= RuntimeAIStallWarningSeconds && RuntimeAIReceivedChunkCount == 0)
+    {
+        bRuntimeAIStallWarningShown = true;
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            FString::Printf(TEXT("LiteRT-LM request #%d has waited %.0fs with no token yet. Check logcat/Output Log for [AIWerewolf]."),
+                RuntimeActiveAIRequestSerial,
+                ElapsedSeconds),
+            FLinearColor(0.93f, 0.72f, 0.30f, 1.0f));
+        RefreshRuntimePhaseText();
+    }
+
+    if (ElapsedSeconds >= RuntimeAIRequestTimeoutSeconds)
+    {
+        FinishRuntimeAIRequestFromTimeout();
+    }
+}
+
+void AWinyunqDemoGameMode::FinishRuntimeAIRequestFromTimeout()
+{
+    if (!bRuntimeAIRequestInFlight || RuntimeAIRequestType == EAIWerewolfRuntimeAIRequest::None)
+    {
+        StopRuntimeAIWatchdog();
+        return;
+    }
+
+    const EAIWerewolfRuntimeAIRequest TimedOutRequestType = RuntimeAIRequestType;
+    const int32 TimedOutPlayerIndex = RuntimeActiveAIPlayerIndex;
+    const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+    const double ElapsedSeconds = FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds);
+    const FString RequestLabel = GetRuntimeAIRequestLabel(TimedOutRequestType);
+    const FString ActorName = RuntimePlayers.IsValidIndex(TimedOutPlayerIndex)
+        ? RuntimePlayers[TimedOutPlayerIndex].Name
+        : FString::Printf(TEXT("P%d"), TimedOutPlayerIndex + 1);
+
+    bRuntimeAIStopRequested = true;
+    StopRuntimeAIWatchdog();
+
+    UE_LOG(LogTemp, Error, TEXT("[AIWerewolf] AI request #%d timeout: type=%s actor=P%d %s elapsed=%.1fs chunks=%d chars=%d; calling StopLiteRtLmInference"),
+        RuntimeActiveAIRequestSerial,
+        *RequestLabel,
+        TimedOutPlayerIndex + 1,
+        *ActorName,
+        ElapsedSeconds,
+        RuntimeAIReceivedChunkCount,
+        RuntimeAIReceivedCharCount);
+    AppendRuntimeChatMessage(
+        TEXT("System / 系统"),
+        FString::Printf(TEXT("LiteRT-LM request #%d timed out after %.0fs (%s, P%d %s). The demo will cancel it and continue."),
+            RuntimeActiveAIRequestSerial,
+            ElapsedSeconds,
+            *RequestLabel,
+            TimedOutPlayerIndex + 1,
+            *ActorName),
+        FLinearColor(0.93f, 0.42f, 0.36f, 1.0f));
+
+    ULiteRtLmBlueprintLibrary::StopLiteRtLmInference();
+    RuntimeActiveAIResponse.Reset();
+
+    switch (TimedOutRequestType)
+    {
+    case EAIWerewolfRuntimeAIRequest::NightKill:
+        bRuntimeAIRequestInFlight = false;
+        RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+        CompleteRuntimeNightPhaseFromAI(TEXT(""));
+        break;
+    case EAIWerewolfRuntimeAIRequest::DiscussionSpeech:
+        CompleteRuntimeDiscussionAI(TEXT("[LiteRT-LM timed out before responding.]"));
+        break;
+    case EAIWerewolfRuntimeAIRequest::Vote:
+        CompleteRuntimeVoteAI(TEXT(""));
+        break;
+    default:
+        bRuntimeAIRequestInFlight = false;
+        RuntimeAIRequestType = EAIWerewolfRuntimeAIRequest::None;
+        RuntimeActiveAIPlayerIndex = INDEX_NONE;
+        RefreshRuntimePhaseText();
+        RefreshRuntimePlayers();
+        break;
+    }
+}
+
+FString AWinyunqDemoGameMode::GetRuntimeAIRequestLabel(EAIWerewolfRuntimeAIRequest RequestType) const
+{
+    switch (RequestType)
+    {
+    case EAIWerewolfRuntimeAIRequest::NightKill:
+        return TEXT("NightKill");
+    case EAIWerewolfRuntimeAIRequest::DiscussionSpeech:
+        return TEXT("DiscussionSpeech");
+    case EAIWerewolfRuntimeAIRequest::Vote:
+        return TEXT("Vote");
+    default:
+        return TEXT("None");
+    }
 }
 
 FLiteRtLmConfig AWinyunqDemoGameMode::BuildRuntimeModelConfig(const FString& ModelPath) const
@@ -2415,7 +2617,16 @@ void AWinyunqDemoGameMode::RefreshRuntimePlayers()
             FString Status = Player.bAlive ? TEXT("Alive / 存活") : TEXT("Out / 出局");
             if (Player.bAlive && PlayerIndex == RuntimeActiveAIPlayerIndex)
             {
-                Status = RuntimePlayers[PlayerIndex].bHuman ? TEXT("Your turn / 你的回合") : TEXT("Thinking / 思考中");
+                if (bRuntimeAIRequestInFlight && !RuntimePlayers[PlayerIndex].bHuman)
+                {
+                    const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+                    const double ElapsedSeconds = FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds);
+                    Status = FString::Printf(TEXT("Thinking %.0fs / 思考 %.0f 秒"), ElapsedSeconds, ElapsedSeconds);
+                }
+                else
+                {
+                    Status = RuntimePlayers[PlayerIndex].bHuman ? TEXT("Your turn / 你的回合") : TEXT("Thinking / 思考中");
+                }
             }
             if (RuntimePhase == EAIWerewolfRuntimePhase::Voting && Player.bAlive && !Player.bHuman && PlayerIndex != RuntimeActiveAIPlayerIndex)
             {
@@ -2474,7 +2685,20 @@ void AWinyunqDemoGameMode::RefreshRuntimePhaseText()
     }
     else if (bRuntimeAIRequestInFlight || RuntimePendingAIPlayers.Num() > 0)
     {
-        Instruction = TEXT("AI is thinking asynchronously. You can watch the table; the next step unlocks when AI finishes. / AI 正在异步思考，完成后自动继续。");
+        if (bRuntimeAIRequestInFlight)
+        {
+            const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+            const double ElapsedSeconds = FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds);
+            Instruction = FString::Printf(TEXT("AI request #%d is running %.0fs. Filter logs with [AIWerewolf]. / AI 请求 #%d 已运行 %.0f 秒，日志过滤 [AIWerewolf]。"),
+                RuntimeActiveAIRequestSerial,
+                ElapsedSeconds,
+                RuntimeActiveAIRequestSerial,
+                ElapsedSeconds);
+        }
+        else
+        {
+            Instruction = TEXT("AI turns are queued and will run automatically. / AI 回合已排队，将自动执行。");
+        }
         NextLabel = TEXT("AI Thinking... / AI 思考中");
     }
 
@@ -2769,13 +2993,58 @@ void AWinyunqDemoGameMode::HandleRuntimeVotePlayer10Clicked()
 
 void AWinyunqDemoGameMode::HandleRuntimeAIChunk(const FString& TextChunk)
 {
+    if (!bRuntimeAIRequestInFlight || RuntimeAIRequestType == EAIWerewolfRuntimeAIRequest::None)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Ignoring late AI chunk len=%d because no request is in flight."), TextChunk.Len());
+        return;
+    }
+
+    ++RuntimeAIReceivedChunkCount;
+    RuntimeAIReceivedCharCount += TextChunk.Len();
     RuntimeActiveAIResponse += TextChunk;
+
+    if (RuntimeAIReceivedChunkCount == 1)
+    {
+        const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d first chunk after %.1fs: len=%d"),
+            RuntimeActiveAIRequestSerial,
+            FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds),
+            TextChunk.Len());
+        AppendRuntimeChatMessage(
+            TEXT("System / 系统"),
+            FString::Printf(TEXT("LiteRT-LM request #%d received first token."), RuntimeActiveAIRequestSerial),
+            FLinearColor(0.55f, 0.70f, 0.95f, 1.0f));
+    }
 }
 
 void AWinyunqDemoGameMode::HandleRuntimeAIDone(const FLiteRtLmResult& Result)
 {
+    if (!bRuntimeAIRequestInFlight || RuntimeAIRequestType == EAIWerewolfRuntimeAIRequest::None)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] Ignoring late AI done callback. text_len=%d json_len=%d error=%s"),
+            Result.FullText.Len(),
+            Result.FullJson.Len(),
+            *Result.ErrorMsg);
+        return;
+    }
+
+    StopRuntimeAIWatchdog();
     const EAIWerewolfRuntimeAIRequest CompletedRequestType = RuntimeAIRequestType;
+    const int32 CompletedPlayerIndex = RuntimeActiveAIPlayerIndex;
+    const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : FPlatformTime::Seconds();
+    const double ElapsedSeconds = FMath::Max(0.0, NowSeconds - RuntimeAIRequestStartTimeSeconds);
     FString AIText = !Result.FullText.IsEmpty() ? Result.FullText : RuntimeActiveAIResponse;
+    UE_LOG(LogTemp, Warning, TEXT("[AIWerewolf] AI request #%d done: type=%s actor=P%d elapsed=%.1fs chunks=%d chars=%d full_text=%d full_json=%d error=%s"),
+        RuntimeActiveAIRequestSerial,
+        *GetRuntimeAIRequestLabel(CompletedRequestType),
+        CompletedPlayerIndex + 1,
+        ElapsedSeconds,
+        RuntimeAIReceivedChunkCount,
+        RuntimeAIReceivedCharCount,
+        Result.FullText.Len(),
+        Result.FullJson.Len(),
+        *Result.ErrorMsg);
+
     if ((CompletedRequestType == EAIWerewolfRuntimeAIRequest::NightKill || CompletedRequestType == EAIWerewolfRuntimeAIRequest::Vote)
         && !Result.FullJson.IsEmpty())
     {
