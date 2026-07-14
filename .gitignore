@@ -6,14 +6,19 @@ Saved/
 Build/
 Document/
 Binaries/Packaged/
+Packaged/
 .vs/
 .idea/
 .vscode/
+.vsconfig
 *.sln
 *.suo
 *.user
 *.userprefs
 *.docstates
+*.obj
+*.pyc
+**/__pycache__/
 *.opensdf
 *.sdf
 *.VC.db
@@ -30,6 +35,23 @@ Content/Models/*_mldrift_program_cache.bin
 Content/Models/*_mldrift_weight_cache.bin
 Content/Models/*.xnnpack_cache_*
 
+# Local editor/tooling checkouts and generated probes
+Plugins/UnrealMotionGraphicsMCP/
+Content/AIWerewolf/
+Content/Resources/
+Content/Demo.umap
+DemoDocs/AIWerewolfDemo/
+Scripts/UnrealMcpRouter/.venv/
+Tests/Native/bin/
+Content/DefaultAndCanBeDelete.uasset
+current_content.txt
+staged_content.html
+temp_zh.txt
+pack_litert.bat
+pack_project.bat
+WINYUNQ_DOCUMENTATION_PLAN.md
+WINYUNQ_PROJECT_STATUS.md
+
 # Project specific
 !Source/
 !Content/
@@ -38,5 +60,3 @@ Content/Models/*.xnnpack_cache_*
 !LiteRTDemo.uproject
 !README.md
 !LICENSE
-!WINYUNQ_DOCUMENTATION_PLAN.md
-!WINYUNQ_PROJECT_STATUS.md

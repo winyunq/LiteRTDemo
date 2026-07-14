@@ -1,0 +1,9 @@
+[project]
+name = "unreal-native-mcp-router"
+version = "0.1.0"
+description = "Discovers Unreal Editor native MCP instances and routes one Codex session to an explicitly selected project."
+requires-python = ">=3.10"
+dependencies = [
+  "mcp>=1.13.1,<2",
+  "psutil>=6.1,<8",
+]
