@@ -20,6 +20,8 @@ This release turns LiteRTDemo into a Blueprint-only, playable Werewolf showcase 
 - Bounded retry keeps the current game node authoritative; invalid/missing tools or runtime failures cannot fabricate an action or silently advance state.
 - Detailed full-conversation JSONL diagnostics are off by default and can be enabled from the setup UI.
 - Disabled diagnostics perform no complete-context diagnostic copy, queueing, or writer-thread work. Enabled diagnostics use a 32 MB bounded queue, batched flush, and drop-on-overflow behavior.
+- Windows packages stage and load the matched wrapper/LiteRT/GPU bundle from the plugin directory. A preflight check rejects an incompatible `libLiteRt.dll` before loading the wrapper, preventing stale project `Binaries` DLLs from producing an operating-system entry-point failure.
+- Android packaging validates the stable wrapper export and its required core LiteRT symbol inside the final signed APK, in addition to the model, signature, architecture, and package metadata checks.
 
 ## Packages
 

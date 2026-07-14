@@ -470,6 +470,8 @@ $ResolvedJavaHome = Resolve-JavaHome $JavaHome $ResolvedEngineRoot
 $BuildToolsRoot = Find-AndroidBuildTools $ResolvedSdkRoot
 $Aapt2 = Join-Path $BuildToolsRoot "aapt2.exe"
 $ApkSigner = Join-Path $BuildToolsRoot "apksigner.bat"
+$ReadElf = Join-Path $ResolvedNdkRoot "toolchains\llvm\prebuilt\windows-x86_64\bin\llvm-readelf.exe"
+Assert-File $ReadElf "NDK llvm-readelf"
 $TarCommand = Get-Command "tar.exe" -ErrorAction Stop
 
 $AndroidSection = "/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"
@@ -545,7 +547,8 @@ try {
     $CookDirectory = Join-Path $ProjectRoot "Saved\Cooked\Android_ASTC"
     $StageDirectory = Join-Path $ProjectRoot "Saved\StagedBuilds\Android_ASTC"
     $GradleAssetsDirectory = Join-Path $ProjectRoot "Intermediate\Android"
-    $ApprovedCleanPaths = @($CookDirectory, $StageDirectory, $GradleAssetsDirectory, $ArchiveDirectory)
+    $NativeAuditDirectory = Join-Path $ProjectRoot "Saved\AndroidNativeAudit"
+    $ApprovedCleanPaths = @($CookDirectory, $StageDirectory, $GradleAssetsDirectory, $NativeAuditDirectory, $ArchiveDirectory)
     foreach ($Path in $ApprovedCleanPaths) {
         Remove-ApprovedWorkspaceDirectory $Path $ApprovedCleanPaths
     }
@@ -676,6 +679,52 @@ try {
             $EmbeddedChunkBytes -ne $ChunkLayout.ManifestBytes) {
             throw ("Embedded chunk byte sum ({0}) does not match model/manifest ({1})." -f $EmbeddedChunkBytes, $ModelItem.Length)
         }
+
+        # Validate the libraries that actually reached the signed APK, rather
+        # than trusting source-tree filenames. The stable wrapper must export
+        # LiteRtLm_GetApi, and its required LiteRtCreateModelFromFd import must
+        # be provided by the packaged libLiteRt.so.
+        New-Item -ItemType Directory -Path $NativeAuditDirectory -Force | Out-Null
+        $NativeEntries = @{
+            "liblitert_lm_wrapper.so" = "lib/arm64-v8a/liblitert_lm_wrapper.so"
+            "libLiteRt.so" = "lib/arm64-v8a/libLiteRt.so"
+        }
+        foreach ($NativeName in $NativeEntries.Keys) {
+            $EntryName = $NativeEntries[$NativeName]
+            $NativeEntry = $Zip.GetEntry($EntryName)
+            if ($null -eq $NativeEntry -or $NativeEntry.Length -lt 1) {
+                throw ("Required Android native library is missing from APK: {0}" -f $EntryName)
+            }
+
+            $Destination = Join-Path $NativeAuditDirectory $NativeName
+            $InputStream = $NativeEntry.Open()
+            $OutputStream = [System.IO.File]::Open(
+                $Destination,
+                [System.IO.FileMode]::Create,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None)
+            try {
+                $InputStream.CopyTo($OutputStream)
+            }
+            finally {
+                $OutputStream.Dispose()
+                $InputStream.Dispose()
+            }
+        }
+
+        $WrapperSymbols = Invoke-NativeCommandCapture $ReadElf @(
+            "--dyn-syms", "--wide", (Join-Path $NativeAuditDirectory "liblitert_lm_wrapper.so"))
+        $CoreSymbols = Invoke-NativeCommandCapture $ReadElf @(
+            "--dyn-syms", "--wide", (Join-Path $NativeAuditDirectory "libLiteRt.so"))
+        if (-not ($WrapperSymbols -match '\bGLOBAL\s+DEFAULT\s+\S+\s+LiteRtLm_GetApi@@LITERT_LM_WRAPPER_1\.0$')) {
+            throw "Packaged Android wrapper does not export stable ABI LiteRtLm_GetApi."
+        }
+        if (-not ($WrapperSymbols -match '\bUND\s+LiteRtCreateModelFromFd@VERS_1\.0$')) {
+            throw "Packaged Android wrapper does not declare the expected LiteRtCreateModelFromFd dependency."
+        }
+        if (-not ($CoreSymbols -match '\bGLOBAL\s+DEFAULT\s+\S+\s+LiteRtCreateModelFromFd@@VERS_1\.0$')) {
+            throw "Packaged Android libLiteRt.so does not provide LiteRtCreateModelFromFd required by the wrapper."
+        }
     }
     finally {
         $Zip.Dispose()
@@ -688,6 +737,7 @@ try {
     Write-Host ("External OBB:    0")
     Write-Host ("Package/version: {0} / {1} / {2}" -f $ExpectedPackageName, $ExpectedVersionCode, $ExpectedVersionName)
     Write-Host ("Signature:       APK Signature Scheme v2 = true")
+    Write-Host "Native ABI:       stable wrapper/core symbol contract verified inside APK"
     Write-Host ("Model chunks:    {0}, {1:N0} bytes (matches source and manifest)" -f $ChunkLayout.Count, $ChunkLayout.TotalBytes)
 }
 finally {

@@ -239,7 +239,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 
 模型在打包时无损分片，首次运行时在应用持久目录重组后再交给严格 GPU 加载。环境要求、固定顺序、分片校验、安装和 Logcat 验收见 [Android 单 APK 打包流程](ANDROID_SINGLE_APK_zh.md)。
 
-每次新包都必须重新通过结构、签名、模型字节和真机运行检查。本文不把尚在迭代中的产物标记为正式发布件，也不以 configured/resolved backend 字段代替 Android 真机硬件利用率遥测。
+每次新包都必须重新通过结构、签名、模型字节、包内原生 ABI 和真机运行检查。当前打包脚本会从最终签名 APK 中解出 wrapper 与 `libLiteRt.so`，验证稳定 `LiteRtLm_GetApi` 导出以及 `LiteRtCreateModelFromFd` 的依赖/提供关系，避免源码目录正确但 APK 混入旧库。本文不把尚在迭代中的产物标记为正式发布件，也不以 configured/resolved backend 字段代替 Android 真机硬件利用率遥测。
 
 当前双工具 Agent、公开票型、thinking 开关和增长诊断改动尚未登记为最终 APK，也未声称通过 Android 真机或玩法 GPU 多样性 soak。[2026-07-11 身份/多样性/隐私记录](ANDROID_DIVERSITY_FIX_BUILD_RECORD_2026-07-11.md)、[2026-07-11 初始 ABI v2/v5 记录](ANDROID_ABI_V2_V5_BUILD_RECORD_2026-07-11.md)和 [2026-07-10 ABI v1 记录](ANDROID_V6_BUILD_RECORD_2026-07-10.md)仅作为各自旧构建的历史证据。
 

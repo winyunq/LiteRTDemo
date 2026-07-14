@@ -117,7 +117,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -Configuration Shipping
 ```
 
-The model is losslessly split for Android packaging and reassembled in app-persistent storage before loading. Packaging prerequisites, ordering, validation, installation, JSONL retrieval, and optional Logcat checks are documented in [ANDROID_SINGLE_APK_zh.md](DemoDocs/WerewolfShowcase/ANDROID_SINGLE_APK_zh.md). Treat a newly produced APK as a build artifact that must pass those checks and real-device strict-backend testing; this README does not identify an in-progress package as a release.
+The model is losslessly split for Android packaging and reassembled in app-persistent storage before loading. The packaging script also extracts the wrapper and core LiteRT library from the final signed APK and verifies the stable `LiteRtLm_GetApi` / `LiteRtCreateModelFromFd` symbol contract. Packaging prerequisites, ordering, validation, installation, JSONL retrieval, and optional Logcat checks are documented in [ANDROID_SINGLE_APK_zh.md](DemoDocs/WerewolfShowcase/ANDROID_SINGLE_APK_zh.md). Treat a newly produced APK as a build artifact that must pass those checks and real-device strict-backend testing; this README does not identify an in-progress package as a release.
 
 ## v5.0.0 packaged downloads
 

@@ -43,7 +43,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Package-AndroidSin
 5. 只清理工作区内允许的 Android 旧产物。
 6. 通过 RunUAT 的 `BuildCookRun -build -skipbuildeditor` 执行 Android ARM64 Shipping Build、ASTC Cook、Stage、Pak、Package 和 Archive。
 7. LiteRT-LM APL 把分片和 Android GPU/runtime `.so` 复制到 APK；Gradle 只生成一个包含主 OBB 载荷与模型分片的 APK。
-8. 对最终 APK 做结构、元数据、签名和内置模型完整性检查。
+8. 对最终 APK 做结构、元数据、签名、内置模型完整性和包内原生 ABI 检查。
 9. 无论成功还是失败，都恢复进入脚本前的进程环境变量。
 
 项目根目录没有 `Source`，仍是 Blueprint-only 项目。插件描述文件显式设置 `EnabledByDefault=false`，项目再通过 `.uproject` 启用插件；这个组合会让 UE 为纯蓝图项目在 `Intermediate\Source` 自动生成临时 Target，并把 C++ 插件静态链接进 Android `libUnreal.so`。不要恢复项目 C++ 模块，也不要移除 `-skipbuildeditor`：Cook 使用已经存在的 Editor 二进制，Android Runtime 则由临时 Target 单独编译。
@@ -97,6 +97,7 @@ UAT 结束后，脚本会逐项确认：
 - APK 内 `assets/litertlm` 不多也不少，只包含当前清单要求的分片和 manifest。
 - 通过 ZIP64 元数据读取每个内置分片的未压缩长度，并与 Android Build 生成的对应分片逐一比较。
 - APK 内分片字节总和、内置 manifest、磁盘 manifest、原模型文件长度和 SHA-1 完全一致。
+- 从最终签名 APK 解出的 `liblitert_lm_wrapper.so` 必须导出稳定 `LiteRtLm_GetApi`，其 `LiteRtCreateModelFromFd` 依赖必须由同包 `libLiteRt.so` 提供。
 
 任一项不满足都会以非零结果停止，不应交付该 APK。
 
@@ -120,7 +121,7 @@ LiteRTLM/litertlm-<session>.jsonl
 Packaged\Release-v5.0.0\Android\LiteRTDemo-Android-Shipping-arm64.apk
 ```
 
-2026-07-14 本机 Blueprint-only Shipping 构建已通过主机侧校验：versionCode 5 / versionName 5.0.0，package `com.winyunq.litertdemo`，仅含 ARM64，minSdkVersion 26 / targetSdkVersion 34。APK 大小为 `2,713,466,811` 字节，SHA-256 为 `E7A87FF4DB7889E085F68447F21F88DCD5687F1BC6943AB0FE717075AF18B5AD`。APK Signature Scheme v2 为 `true`，内置 4 个模型分片合计 `2,583,085,056` 字节，外部 OBB 数量为 0。
+2026-07-14 修复候选 Blueprint-only Shipping 构建已通过主机侧校验：versionCode 5 / versionName 5.0.0，package `com.winyunq.litertdemo`，仅含 ARM64，minSdkVersion 26 / targetSdkVersion 34。APK 大小为 `2,713,468,347` 字节，SHA-256 为 `8D00E450805709465E4A0CB971C2D190FE371BE1CC44513F92C6080FF087500C`。APK Signature Scheme v2 为 `true`，内置 4 个模型分片合计 `2,583,085,056` 字节，外部 OBB 数量为 0；最终 APK 内稳定 wrapper/core 符号契约已通过。该结果仍等待本轮 Android 真机显示与严格 GPU 加载复测，确认前不发布 Release。
 
 包内已逐项确认 `libUnreal.so`、`liblitert_lm_wrapper.so`、Gemma constraint provider、LiteRT GPU/OpenCL/WebGPU accelerator 与 Top-K sampler。Android Runtime 由本轮临时 Target 使用 NDK r27c 实际编译和链接，不是沿用引擎通用 `UnrealGame` 或旧项目二进制。
 
