@@ -1,10 +1,12 @@
 # LiteRTDemo
 
-LiteRTDemo is an Unreal Engine 5.8 teaching project for the `fabLiteRTLMUnreal` plugin. Its main showcase is a complete, Blueprint-authored Werewolf game driven by local Gemma inference.
+LiteRTDemo is an Unreal Engine 5.8 teaching project for the LiteRT-LM Unreal plugin. Its main showcase is a complete, Blueprint-authored Werewolf game driven by local Gemma inference.
 
 The demo is deliberately more than a chat box: it demonstrates automatic model loading, persistent Agent memory, multi-agent request orchestration, native tool calls, streamed callbacks, failure isolation, and a mobile-friendly UMG workflow in one playable example.
 
 “Blueprint-authored” refers to the gameplay and orchestration layer. Gemma inference still runs through the LiteRT-LM native library and the Unreal plugin wrapper.
+
+Plugin installation, Blueprint tutorials, API maps, C++, runtime diagnostics, and packaging guidance are maintained at the canonical [LiteRT-LM Unreal documentation site](https://winyunq.github.io/LiteRT-LM-Unreal/).
 
 ## What the demo teaches
 
@@ -79,7 +81,7 @@ On Windows, diagnostics are written below the project's `Saved/LiteRTLM` directo
    git clone https://github.com/winyunq/LiteRTDemo.git
    ```
 
-2. The gameplay project is open source, while `Plugins/LiteRT-LM-Unreal` points to the private `fabLiteRTLMUnreal` submodule. Authorized plugin developers can run `git submodule update --init`; everyone else can use the packaged Windows/Android release without plugin source access.
+2. Install the LiteRT-LM plugin for Unreal Engine 5.8 through Fab. The Demo repository intentionally contains no plugin source, plugin submodule, or checkout instructions.
 3. Place the Gemma artifact at `Content/Models/gemma-4-E2B-it.litertlm`. The multi-gigabyte model is intentionally excluded from Git source and is bundled in the packaged releases.
 4. Open `LiteRTDemo.uproject` with Unreal Engine 5.8.
 5. Play `/Game/WerewolfShowcase/Maps/L_WerewolfShowcase`.
@@ -88,24 +90,11 @@ On Windows, diagnostics are written below the project's `Saved/LiteRTLM` directo
 
 The player never needs an Advance, Skip AI, Next Phase, or inference-configuration control.
 
-## Learn the plugin API
+## Plugin documentation
 
-The [Blueprint integration tutorial](DemoDocs/WerewolfShowcase/LITERTLM_BLUEPRINT_TUTORIAL_zh.md) explains:
+Use the [LiteRT-LM Unreal documentation site](https://winyunq.github.io/LiteRT-LM-Unreal/) as the single entry point for plugin installation, the screenshot-led Quick Chat tutorial, Blueprint and C++ APIs, runtime diagnostics, and Win64/Android delivery.
 
-- automatic Gemma project-model loading;
-- strict GPU configuration;
-- one persistent `ULiteRtLmAgent` per AI player;
-- public/private memory broadcasting;
-- `submit_werewolf_speech` and `select_werewolf_target` tool handling;
-- Blueprint FIFO orchestration;
-- Blueprint rule validation and safe state mutation;
-- per-request thinking and diagnostic trace format.
-
-The [ABI v2 runtime tutorial](DemoDocs/WerewolfShowcase/LITERTLM_ABI_V2_RUNTIME_BLUEPRINT_TUTORIAL_zh.md) documents strict GPU evidence, initial ToolsJson loading, Engine/Conversation generations, real native reset semantics, RuntimeStatus evidence levels, and Android JSONL diagnostics.
-
-The [plugin reliability issue log](DemoDocs/WerewolfShowcase/LITERTLM_PLUGIN_ISSUES_zh.md) records the native-context bug found through this demo, the implemented ABI v2 reset/loader/status/logging fixes, and open work such as plugin-level FIFO, structured errors, Android lifecycle recovery, token telemetry, and hardware execution telemetry.
-
-For the game-specific walkthrough and acceptance checklist, see the [Chinese Werewolf showcase guide](DemoDocs/WerewolfShowcase/README_zh.md).
+The files under `DemoDocs/WerewolfShowcase` are intentionally limited to this repository's game-specific implementation, tests, and build records. For the showcase walkthrough and acceptance checklist, see the [Chinese Werewolf showcase guide](DemoDocs/WerewolfShowcase/README_zh.md).
 
 ## Android packaging
 
@@ -136,12 +125,11 @@ The dated [2026-07-11 identity/diversity/privacy build record](DemoDocs/Werewolf
 
 - `Content/WerewolfShowcase`: maps, Blueprint gameplay/core assets, UMG widgets, avatars, and tests.
 - `Content/Models`: model checksum metadata; the multi-gigabyte model itself is release/build input and is ignored by Git.
-- `Plugins/LiteRT-LM-Unreal`: private `fabLiteRTLMUnreal` submodule containing the Unreal wrapper and native integration.
 - `DemoDocs/WerewolfShowcase`: tutorial, issue log, game guide, and Android packaging documentation.
 - `Scripts/Package-AndroidSingleApk.ps1`: reproducible Android packaging entry point.
 - `Scripts/Assemble-LiteRTDemo-v5.0.0.ps1`: verified release downloader/assembler.
 
-The project has no gameplay `Source` module. Rules, role state, serialized AI scheduling, native tool validation, and UMG flow are authored in Blueprint; the C++ implementation lives only in the plugin. Editor MCP authoring helpers are not runtime dependencies and are excluded from source and packaged builds.
+The project has no gameplay `Source` module. Rules, role state, serialized AI scheduling, native tool validation, and UMG flow are authored in Blueprint; the C++ implementation lives only in the separately installed plugin. Editor MCP authoring helpers are not runtime dependencies and are excluded from source and packaged builds.
 
 ## License
 

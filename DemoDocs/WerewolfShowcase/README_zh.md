@@ -17,7 +17,7 @@
 7. 如何用 RuntimeStatus 区分 configured backend、native resolved backend 与尚不可用的硬件遥测；
 8. 如何让详细 trace 默认关闭、在需要复现问题时按需开启，同时让玩家界面只显示不会泄露身份的摘要状态。
 
-完整 Agent API 操作步骤见 [LiteRT-LM Blueprint 接入教程](LITERTLM_BLUEPRINT_TUTORIAL_zh.md)。旧 ABI v2 的 reset/状态演进和历史 Android JSONL 方案保留在 [ABI v2 Runtime/Blueprint 教程](LITERTLM_ABI_V2_RUNTIME_BLUEPRINT_TUTORIAL_zh.md) 供迁移参考；它不是当前 `fabLiteRTLMUnreal` 的首选接入方式。Demo 发现并推动修复的问题记录在 [插件可靠性 Issue](LITERTLM_PLUGIN_ISSUES_zh.md)。
+插件安装、Quick Chat / Agent 接入、运行时、C++ 与打包说明统一以 [LiteRT-LM Unreal 官方文档](https://winyunq.github.io/LiteRT-LM-Unreal/) 为准。本目录只维护狼人杀 Demo 的玩法实现、验收方法和历史问题记录，不再作为插件 API 的入口。
 
 ## 入口与主要资产
 

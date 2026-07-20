@@ -36,6 +36,7 @@ Content/Models/*_mldrift_weight_cache.bin
 Content/Models/*.xnnpack_cache_*
 
 # Local editor/tooling checkouts and generated probes
+/Plugins/LiteRT-LM-Unreal/
 Plugins/UnrealMotionGraphicsMCP/
 Content/AIWerewolf/
 Content/Resources/
